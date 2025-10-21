@@ -180,11 +180,12 @@ show_main_menu() {
         print_header "Photo Registration Form - Management Menu"
         print_info "Installation detected at: $INSTALL_DIR"
         
-        # Check if git repo
-        if [[ -d "${INSTALL_DIR}/.git" ]]; then
+        # Check if we're running from a git repo (source directory)
+        SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+        if [[ -d "${SCRIPT_DIR}/.git" ]]; then
             print_success "Git repository detected - updates available"
         else
-            print_warning "Not a git repository - only dependency updates available"
+            print_warning "Not running from git repository - only dependency updates available"
         fi
         
         echo ""
@@ -289,9 +290,9 @@ update_installation() {
             exit 1
         }
         
-        # Copy updated files to install directory (excluding .git, db, venv)
+        # Copy updated files to install directory (excluding .git, db, venv, .env)
         print_info "Copying updated files to installation directory..."
-        rsync -av --exclude='.git' --exclude='*.db' --exclude='venv' --exclude='__pycache__' "$SCRIPT_DIR/" "$INSTALL_DIR/" || {
+        rsync -av --exclude='.git' --exclude='*.db' --exclude='venv' --exclude='__pycache__' --exclude='.env' "$SCRIPT_DIR/" "$INSTALL_DIR/" || {
             cp -r "$SCRIPT_DIR"/* "$INSTALL_DIR/" 2>/dev/null || true
         }
     else
@@ -316,6 +317,15 @@ update_installation() {
     if [[ -f ".env.backup" ]]; then
         mv .env.backup .env
         print_success ".env file restored"
+    fi
+    
+    # Ensure correct ownership and permissions for critical files
+    chown -R ${SYSTEM_USER}:${SYSTEM_GROUP} "$INSTALL_DIR"
+    if [[ -f ".env" ]]; then
+        chmod 640 .env
+    fi
+    if [[ -f "$DB_FILE" ]]; then
+        chmod 644 "$DB_FILE"
     fi
     
     # Update Python dependencies

@@ -14,7 +14,12 @@ from email import encoders
 from pathlib import Path
 from typing import Optional, List, Dict
 import logging
-from jinja2 import Template
+
+try:
+    from jinja2 import Template
+except ImportError:
+    # Fallback if jinja2 is not available
+    Template = None
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -190,9 +195,17 @@ class EmailSender:
             with open(template_path, 'r', encoding='utf-8') as f:
                 template_content = f.read()
             
-            # Render template with Jinja2
-            template = Template(template_content)
-            html_body = template.render(**variables)
+            # Render template with Jinja2 if available
+            if Template is not None:
+                template = Template(template_content)
+                html_body = template.render(**variables)
+            else:
+                # Fallback to simple string replacement
+                html_body = template_content
+                for key, value in variables.items():
+                    placeholder = f"{{{{{key}}}}}"  # {{variable_name}}
+                    html_body = html_body.replace(placeholder, str(value))
+                logger.warning("Jinja2 not available, using simple string replacement")
             
             # Send email
             return self.send_email(
