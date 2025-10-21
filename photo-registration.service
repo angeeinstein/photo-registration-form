@@ -1,0 +1,27 @@
+[Unit]
+Description=Photo Registration Form Flask Application
+After=network.target
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/photo-registration-form
+Environment="PATH=/opt/photo-registration-form/venv/bin"
+Environment="SECRET_KEY=your-secret-key-change-me"
+ExecStartPre=/bin/mkdir -p /var/log/photo-registration
+ExecStartPre=/bin/mkdir -p /var/run/photo-registration
+ExecStartPre=/bin/chown www-data:www-data /var/log/photo-registration
+ExecStartPre=/bin/chown www-data:www-data /var/run/photo-registration
+ExecStart=/opt/photo-registration-form/venv/bin/gunicorn --config gunicorn_config.py app:app
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
