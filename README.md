@@ -9,20 +9,20 @@ A Flask-based web application for collecting photo registration information at f
 git clone https://github.com/angeeinstein/photo-registration-form.git
 cd photo-registration-form
 
-# 2. Run the installer
+# 2. Run the installer (automatic + configuration wizard)
 sudo bash install.sh
 
-# 3. (Optional) Configure environment variables
-sudo nano /opt/photo-registration-form/.env
+# The script will:
+# - Automatically install ALL dependencies (Python, Nginx, etc.)
+# - Set up the application and database
+# - Ask you to configure network binding and Nginx
+# - Guide you through the entire setup interactively
 
-# 4. Check service status
-sudo systemctl status photo-registration
-
-# 5. Test the application
+# 3. Test the application
 curl http://127.0.0.1:5000/health
 ```
 
-That's it! The application is now running. See [Cloudflare Tunnel Setup](#step-5-set-up-cloudflare-tunnel) below for public access.
+**That's it!** The installation is fully automated with an interactive configuration wizard. No manual editing of config files needed!
 
 ## Features
 
@@ -76,18 +76,32 @@ The easiest way to install is using the automated install script:
 git clone https://github.com/angeeinstein/photo-registration-form.git
 cd photo-registration-form
 
-# Run the install script
+# Run the install script (fully automated + interactive wizard)
 sudo bash install.sh
 ```
 
-The install script will:
-- ✅ Install all system dependencies
+The install script will **automatically**:
+- ✅ Install **ALL** system dependencies (Python, Nginx, git, etc.)
 - ✅ Create Python virtual environment
 - ✅ Install Python packages
 - ✅ Initialize the database
 - ✅ Set up systemd service
 - ✅ Generate secure SECRET_KEY
 - ✅ Start the application
+
+Then the **post-installation wizard** will ask you to configure:
+1. **Network Binding** - Choose between:
+   - Localhost only (127.0.0.1:5000) - for Nginx reverse proxy
+   - Network access (0.0.0.0:5000) - for Cloudflare Tunnel on separate server
+   - Skip (configure later)
+
+2. **Nginx Reverse Proxy** (optional) - Automatic setup for:
+   - Port 80 access (no :5000 in URL)
+   - SSL/HTTPS support
+   - Better performance and security
+   - Enter your domain/hostname and it's configured!
+
+3. **Port conflict detection** - Automatically checks port 80 availability
 
 **For updates:**
 ```bash
@@ -530,11 +544,20 @@ curl http://localhost:5000/registrations
 
 ## 📚 Documentation
 
+### 🚀 Getting Started
+- **[Installation Summary](INSTALLATION-SUMMARY.md)** - 📦 **READ THIS FIRST** - What happens during installation
+- **[Post-Installation Wizard Guide](POST-INSTALL-WIZARD.md)** - 🎯 Step-by-step configuration guide
+
+### 🌐 Network & Tunnel Setup
 - **[Tunnel on Separate Server Guide](TUNNEL-ON-SEPARATE-SERVER.md)** - Setup for Cloudflare Tunnel on different machine
 - **[Port & Tunnel Configuration](PORT-AND-TUNNEL-CONFIG.md)** - Server port and Cloudflare Tunnel setup guide
+
+### ⚙️ System Management
 - **[systemd & Nginx Management](SYSTEMD-NGINX-MANAGEMENT.md)** - Complete guide to service configuration
 - **[Install Menu Guide](INSTALL-MENU-GUIDE.md)** - Visual guide to the interactive installation menu
 - **[Quick Reference Guide](QUICK-REFERENCE.md)** - Common commands and operations
+
+### 📝 Contributing
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute and maintain compatibility
 - **[Changelog](CHANGELOG.md)** - Version history and changes
 

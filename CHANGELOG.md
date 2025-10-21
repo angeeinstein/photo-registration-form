@@ -50,6 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Post-installation configuration wizard** - Interactive setup after installation
+- **Automatic Nginx installation** - No prompts, installed with system dependencies
+- **Port conflict detection** - Checks port 80 availability automatically
 - Interactive menu system in `install.sh` for better user experience
 - Settings configuration menu in `install.sh`
 - **Network binding configuration option** in install script
@@ -69,6 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `install.sh` now shows interactive menu instead of command-line arguments
+- **Nginx is now installed automatically during fresh installation** (no prompts)
+- **Post-installation wizard runs automatically** after installation
+- **Smart binding detection** - Warns if Flask binds to network when using Nginx
 - Uninstall functionality integrated into main install script
 - Enhanced user prompts with better descriptions
 - Improved menu navigation with numbered options
@@ -76,6 +82,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **systemd service now loads .env file** for configuration
 
 ### Features
+- **Zero-prompt installation** - All dependencies installed automatically
+- **Post-installation wizard** guides configuration:
+  - Network binding setup (localhost vs network access)
+  - Nginx configuration with hostname
+  - Port conflict detection and resolution
+  - Flask binding validation for Nginx setup
 - **Configurable network binding** (localhost only, network access, port 80, custom)
 - **Automatic Cloudflare Tunnel configuration suggestions** based on binding
 - **Port 80 support** with CAP_NET_BIND_SERVICE capability
@@ -89,9 +101,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Documentation
 - Added comprehensive systemd and Nginx management guide
 - Added separate server Cloudflare Tunnel setup guide
-- Documented all automated configuration steps
+- Documented automated installation process
 - Clarified network binding options
 - Added security considerations for network exposure
+- Updated README with zero-configuration installation instructions
 
 ## [1.0.0] - 2025-10-21
 - Rate limiting for form submissions

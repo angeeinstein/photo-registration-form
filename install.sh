@@ -115,7 +115,7 @@ install_dependencies() {
             print_info "Updating package lists..."
             apt-get update -qq
             
-            print_info "Installing required packages..."
+            print_info "Installing required packages (Python, Nginx, etc.)..."
             apt-get install -y \
                 python3 \
                 python3-pip \
@@ -126,10 +126,11 @@ install_dependencies() {
                 curl \
                 wget \
                 sqlite3 \
+                nginx \
                 || { print_error "Failed to install dependencies"; exit 1; }
             ;;
         centos|rhel|fedora)
-            print_info "Installing required packages..."
+            print_info "Installing required packages (Python, Nginx, etc.)..."
             if command -v dnf &> /dev/null; then
                 dnf install -y \
                     python3 \
@@ -140,6 +141,7 @@ install_dependencies() {
                     curl \
                     wget \
                     sqlite \
+                    nginx \
                     || { print_error "Failed to install dependencies"; exit 1; }
             else
                 yum install -y \
@@ -151,6 +153,7 @@ install_dependencies() {
                     curl \
                     wget \
                     sqlite \
+                    nginx \
                     || { print_error "Failed to install dependencies"; exit 1; }
             fi
             ;;
@@ -159,7 +162,7 @@ install_dependencies() {
             ;;
     esac
     
-    print_success "System dependencies installed"
+    print_success "System dependencies installed (including Nginx)"
 }
 
 # Check if installation exists
@@ -556,6 +559,35 @@ configure_network_binding() {
 configure_hostname() {
     print_header "Configure Hostname"
     
+    # Check if nginx is installed
+    if ! command -v nginx &> /dev/null; then
+        print_warning "Nginx is not installed!"
+        print_info "Installing Nginx..."
+        case $OS in
+            ubuntu|debian)
+                apt-get update -qq
+                apt-get install -y nginx
+                ;;
+            centos|rhel|fedora)
+                if command -v dnf &> /dev/null; then
+                    dnf install -y nginx
+                else
+                    yum install -y nginx
+                fi
+                ;;
+        esac
+        
+        if command -v nginx &> /dev/null; then
+            print_success "Nginx installed successfully"
+            systemctl enable nginx
+        else
+            print_error "Failed to install Nginx"
+            read -p "Press Enter to continue..."
+            configure_settings
+            return 1
+        fi
+    fi
+    
     echo "Enter your domain/hostname (e.g., photos.example.com)"
     echo "Or enter 'localhost' for local access only"
     read -p "Hostname: " hostname
@@ -565,54 +597,65 @@ configure_hostname() {
         return 1
     fi
     
+    # Ensure Flask is bound to localhost when using Nginx
+    if [[ -f "$ENV_FILE" ]]; then
+        CURRENT_BIND=$(grep "^GUNICORN_BIND=" "$ENV_FILE" | cut -d= -f2)
+        if [[ "$CURRENT_BIND" != "127.0.0.1:5000" ]]; then
+            print_warning "For Nginx reverse proxy, Flask should bind to localhost (127.0.0.1:5000)"
+            read -p "Change binding now? (recommended) (y/n): " change_bind
+            if [[ "$change_bind" == "y" ]] || [[ "$change_bind" == "Y" ]]; then
+                sed -i "s/^GUNICORN_BIND=.*/GUNICORN_BIND=127.0.0.1:5000/" "$ENV_FILE"
+                print_info "Restarting Flask service..."
+                systemctl restart ${SERVICE_NAME}
+                sleep 2
+                print_success "Flask now bound to localhost"
+            fi
+        fi
+    fi
+    
     # Update or create nginx config
     if [[ -f "${INSTALL_DIR}/nginx.conf.template" ]]; then
         print_info "Creating nginx configuration..."
         sed "s/SERVER_NAME/$hostname/g" "${INSTALL_DIR}/nginx.conf.template" > /tmp/nginx-photo-reg.conf
         
-        # Install nginx if not present
-        if ! command -v nginx &> /dev/null; then
-            print_info "Nginx not installed. Install it? (y/n)"
-            read -p "Install nginx: " install_nginx
-            if [[ "$install_nginx" == "y" ]] || [[ "$install_nginx" == "Y" ]]; then
-                case $OS in
-                    ubuntu|debian)
-                        apt-get install -y nginx
-                        ;;
-                    centos|rhel|fedora)
-                        if command -v dnf &> /dev/null; then
-                            dnf install -y nginx
-                        else
-                            yum install -y nginx
-                        fi
-                        ;;
-                esac
-            fi
+        # Install nginx config
+        print_info "Installing nginx configuration..."
+        cp /tmp/nginx-photo-reg.conf "$NGINX_CONF"
+        
+        # Create symlink if sites-enabled directory exists
+        if [[ -d "/etc/nginx/sites-enabled" ]]; then
+            ln -sf "$NGINX_CONF" "$NGINX_ENABLED"
+            print_success "Nginx configuration enabled"
         fi
         
-        # Install nginx config
-        if command -v nginx &> /dev/null; then
-            print_info "Installing nginx configuration..."
-            cp /tmp/nginx-photo-reg.conf "$NGINX_CONF"
+        # Test nginx config
+        if nginx -t 2>/dev/null; then
+            print_success "Nginx configuration is valid"
             
-            # Create symlink if sites-enabled directory exists
-            if [[ -d "/etc/nginx/sites-enabled" ]]; then
-                ln -sf "$NGINX_CONF" "$NGINX_ENABLED"
-                print_success "Nginx configuration enabled"
-            fi
-            
-            # Test nginx config
-            if nginx -t 2>/dev/null; then
-                print_success "Nginx configuration is valid"
+            # Check if nginx is running
+            if systemctl is-active --quiet nginx; then
                 print_info "Reloading nginx..."
-                systemctl reload nginx || systemctl restart nginx
-                print_success "Nginx reloaded"
+                systemctl reload nginx 2>&1
             else
-                print_warning "Nginx configuration test failed. Please check manually."
+                print_info "Starting nginx..."
+                systemctl start nginx 2>&1 || {
+                    print_error "Failed to start Nginx"
+                    print_info "Checking port 80 availability..."
+                    ss -tulpn | grep ":80 " || netstat -tulpn | grep ":80 " || true
+                }
             fi
             
-            rm -f /tmp/nginx-photo-reg.conf
+            if systemctl is-active --quiet nginx; then
+                print_success "Nginx is running!"
+            else
+                print_warning "Nginx service is not running. Check: sudo systemctl status nginx"
+            fi
+        else
+            print_error "Nginx configuration test failed"
+            nginx -t
         fi
+        
+        rm -f /tmp/nginx-photo-reg.conf
         
         print_success "Hostname configured: $hostname"
         echo ""
@@ -640,6 +683,35 @@ install_nginx_config() {
         return 1
     fi
     
+    # Check if nginx is installed
+    if ! command -v nginx &> /dev/null; then
+        print_warning "Nginx is not installed!"
+        print_info "Installing Nginx..."
+        case $OS in
+            ubuntu|debian)
+                apt-get update -qq
+                apt-get install -y nginx
+                ;;
+            centos|rhel|fedora)
+                if command -v dnf &> /dev/null; then
+                    dnf install -y nginx
+                else
+                    yum install -y nginx
+                fi
+                ;;
+        esac
+        
+        if command -v nginx &> /dev/null; then
+            print_success "Nginx installed successfully"
+            systemctl enable nginx
+        else
+            print_error "Failed to install Nginx"
+            read -p "Press Enter to continue..."
+            configure_settings
+            return 1
+        fi
+    fi
+    
     echo "Enter your domain/hostname (e.g., photos.example.com)"
     read -p "Hostname: " hostname
     
@@ -650,32 +722,19 @@ install_nginx_config() {
         return 1
     fi
     
-    # Check if nginx is installed
-    if ! command -v nginx &> /dev/null; then
-        print_warning "Nginx is not installed"
-        read -p "Install nginx now? (y/n): " install_nginx
-        if [[ "$install_nginx" == "y" ]] || [[ "$install_nginx" == "Y" ]]; then
-            print_info "Installing nginx..."
-            case $OS in
-                ubuntu|debian)
-                    apt-get update -qq
-                    apt-get install -y nginx
-                    ;;
-                centos|rhel|fedora)
-                    if command -v dnf &> /dev/null; then
-                        dnf install -y nginx
-                    else
-                        yum install -y nginx
-                    fi
-                    ;;
-            esac
-            
-            # Start and enable nginx
-            systemctl start nginx
-            systemctl enable nginx
-            print_success "Nginx installed and started"
-        else
-            print_warning "Nginx not installed. Configuration saved but not activated."
+    # Ensure Flask is bound to localhost when using Nginx
+    if [[ -f "$ENV_FILE" ]]; then
+        CURRENT_BIND=$(grep "^GUNICORN_BIND=" "$ENV_FILE" | cut -d= -f2)
+        if [[ "$CURRENT_BIND" != "127.0.0.1:5000" ]]; then
+            print_warning "For Nginx reverse proxy, Flask should bind to localhost (127.0.0.1:5000)"
+            read -p "Change binding now? (recommended) (y/n): " change_bind
+            if [[ "$change_bind" == "y" ]] || [[ "$change_bind" == "Y" ]]; then
+                sed -i "s/^GUNICORN_BIND=.*/GUNICORN_BIND=127.0.0.1:5000/" "$ENV_FILE"
+                print_info "Restarting Flask service..."
+                systemctl restart ${SERVICE_NAME}
+                sleep 2
+                print_success "Flask now bound to localhost"
+            fi
         fi
     fi
     
@@ -686,21 +745,36 @@ install_nginx_config() {
     # Enable site if sites-enabled exists
     if [[ -d "/etc/nginx/sites-enabled" ]]; then
         ln -sf "$NGINX_CONF" "$NGINX_ENABLED"
+        print_success "Nginx site enabled"
     fi
     
     # Test configuration
-    if command -v nginx &> /dev/null; then
-        print_info "Testing nginx configuration..."
-        if nginx -t 2>/dev/null; then
-            print_success "Configuration is valid"
+    print_info "Testing nginx configuration..."
+    if nginx -t 2>/dev/null; then
+        print_success "Configuration is valid"
+        
+        # Check if nginx is running
+        if systemctl is-active --quiet nginx; then
             print_info "Reloading nginx..."
-            systemctl reload nginx
-            print_success "Nginx configuration activated"
+            systemctl reload nginx 2>&1
         else
-            print_error "Nginx configuration test failed"
-            print_info "Running nginx -t to show errors:"
-            nginx -t
+            print_info "Starting nginx..."
+            systemctl start nginx 2>&1 || {
+                print_error "Failed to start Nginx"
+                print_info "Checking port 80 availability..."
+                ss -tulpn | grep ":80 " || netstat -tulpn | grep ":80 " || true
+            }
         fi
+        
+        if systemctl is-active --quiet nginx; then
+            print_success "Nginx configuration activated!"
+        else
+            print_warning "Nginx service is not running. Check: sudo systemctl status nginx"
+        fi
+    else
+        print_error "Nginx configuration test failed"
+        print_info "Running nginx -t to show errors:"
+        nginx -t
     fi
     
     print_success "Nginx configuration installed"
@@ -1059,6 +1133,9 @@ fresh_installation() {
     
     print_success "Installation completed successfully!"
     print_installation_info
+    
+    # Run post-installation configuration wizard
+    post_installation_wizard
 }
 
 # Print installation information
@@ -1094,6 +1171,214 @@ print_installation_info() {
     # Show service status
     print_header "Current Service Status"
     systemctl status ${SERVICE_NAME} --no-pager -l
+}
+
+# Post-installation configuration wizard
+post_installation_wizard() {
+    print_header "Post-Installation Configuration"
+    
+    echo -e "${CYAN}The basic installation is complete!${NC}"
+    echo -e "${CYAN}Let's configure your system for production use.${NC}"
+    echo ""
+    
+    # Step 1: Network binding configuration
+    print_header "Step 1: Network Binding"
+    echo "How do you want to access the application?"
+    echo ""
+    echo "1) Local access only (localhost) - Recommended with Nginx reverse proxy"
+    echo "2) Network access (LAN) - For Cloudflare Tunnel on separate server"
+    echo "3) Skip for now (configure later)"
+    echo ""
+    read -p "Enter your choice [1-3]: " binding_choice
+    
+    case $binding_choice in
+        1)
+            print_info "Keeping default: localhost only (127.0.0.1:5000)"
+            ;;
+        2)
+            print_info "Configuring for network access..."
+            if [[ -f "$ENV_FILE" ]]; then
+                # Detect server IP
+                SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+                if [[ -z "$SERVER_IP" ]]; then
+                    SERVER_IP="192.168.1.104"
+                fi
+                
+                # Update .env with network binding
+                if grep -q "^GUNICORN_BIND=" "$ENV_FILE"; then
+                    sed -i "s/^GUNICORN_BIND=.*/GUNICORN_BIND=0.0.0.0:5000/" "$ENV_FILE"
+                else
+                    echo "GUNICORN_BIND=0.0.0.0:5000" >> "$ENV_FILE"
+                fi
+                
+                print_success "Configured for network access on 0.0.0.0:5000"
+                print_info "Your server IP appears to be: ${YELLOW}$SERVER_IP${NC}"
+                print_info "Configure Cloudflare Tunnel with: ${YELLOW}http://$SERVER_IP:5000${NC}"
+                
+                # Restart service
+                print_info "Restarting service..."
+                systemctl restart ${SERVICE_NAME}
+                sleep 2
+                
+                if systemctl is-active --quiet ${SERVICE_NAME}; then
+                    print_success "Service restarted successfully"
+                else
+                    print_warning "Service may need attention. Check: sudo systemctl status ${SERVICE_NAME}"
+                fi
+            fi
+            ;;
+        3)
+            print_info "Skipped network binding configuration"
+            ;;
+        *)
+            print_warning "Invalid choice. Keeping default configuration."
+            ;;
+    esac
+    
+    echo ""
+    
+    # Step 2: Nginx configuration
+    print_header "Step 2: Nginx Reverse Proxy"
+    echo "Do you want to configure Nginx as a reverse proxy?"
+    echo ""
+    echo "Benefits:"
+    echo "  - Access on port 80 (no :5000 in URL)"
+    echo "  - SSL/HTTPS support"
+    echo "  - Better performance and security"
+    echo ""
+    
+    # Check if nginx is running and if port 80 is available
+    PORT_80_IN_USE=false
+    if ss -tuln 2>/dev/null | grep -q ":80 " || netstat -tuln 2>/dev/null | grep -q ":80 "; then
+        if ! systemctl is-active --quiet nginx; then
+            PORT_80_IN_USE=true
+            print_warning "Port 80 is in use by another service (not Nginx)"
+        fi
+    fi
+    
+    if [[ "$PORT_80_IN_USE" == "true" ]]; then
+        echo -e "${RED}WARNING: Port 80 is already in use!${NC}"
+        echo "You may need to:"
+        echo "  1. Stop the conflicting service"
+        echo "  2. Configure Flask to use localhost binding (Step 1, option 1)"
+        echo ""
+    fi
+    
+    read -p "Configure Nginx now? (y/n): " nginx_choice
+    
+    if [[ "$nginx_choice" == "y" ]] || [[ "$nginx_choice" == "Y" ]]; then
+        # Ensure Flask is bound to localhost if using Nginx
+        if [[ -f "$ENV_FILE" ]]; then
+            CURRENT_BIND=$(grep "^GUNICORN_BIND=" "$ENV_FILE" | cut -d= -f2)
+            if [[ "$CURRENT_BIND" != "127.0.0.1:5000" ]]; then
+                print_warning "For Nginx reverse proxy, Flask should bind to localhost"
+                read -p "Change binding to 127.0.0.1:5000? (recommended) (y/n): " change_bind
+                if [[ "$change_bind" == "y" ]] || [[ "$change_bind" == "Y" ]]; then
+                    sed -i "s/^GUNICORN_BIND=.*/GUNICORN_BIND=127.0.0.1:5000/" "$ENV_FILE"
+                    systemctl restart ${SERVICE_NAME}
+                    sleep 2
+                    print_success "Flask now bound to localhost"
+                fi
+            fi
+        fi
+        
+        # Get hostname
+        echo ""
+        echo "Enter your domain/hostname (e.g., photos.example.com)"
+        echo "Or enter 'localhost' for local testing"
+        read -p "Hostname: " hostname
+        
+        if [[ -n "$hostname" ]]; then
+            # Create nginx config
+            print_info "Creating Nginx configuration for $hostname..."
+            
+            if [[ -f "${INSTALL_DIR}/nginx.conf.template" ]]; then
+                sed "s/SERVER_NAME/$hostname/g" "${INSTALL_DIR}/nginx.conf.template" > "$NGINX_CONF"
+                
+                # Enable site if sites-enabled exists
+                if [[ -d "/etc/nginx/sites-enabled" ]]; then
+                    ln -sf "$NGINX_CONF" "$NGINX_ENABLED"
+                    print_success "Nginx site enabled"
+                fi
+                
+                # Test configuration
+                print_info "Testing Nginx configuration..."
+                if nginx -t 2>&1; then
+                    print_success "Nginx configuration is valid"
+                    
+                    # Start nginx if not running
+                    if ! systemctl is-active --quiet nginx; then
+                        print_info "Starting Nginx..."
+                        systemctl start nginx 2>&1 || {
+                            print_error "Failed to start Nginx"
+                            print_info "Checking what's using port 80..."
+                            ss -tulpn | grep ":80 " || netstat -tulpn | grep ":80 " || true
+                        }
+                    else
+                        print_info "Reloading Nginx..."
+                        systemctl reload nginx 2>&1
+                    fi
+                    
+                    # Enable nginx
+                    systemctl enable nginx 2>/dev/null || true
+                    
+                    if systemctl is-active --quiet nginx; then
+                        print_success "Nginx is running!"
+                        echo ""
+                        print_info "Access your application at: ${YELLOW}http://$hostname${NC}"
+                    else
+                        print_warning "Nginx configuration created but service is not running"
+                        print_info "Check status with: sudo systemctl status nginx"
+                    fi
+                else
+                    print_error "Nginx configuration test failed"
+                    nginx -t
+                fi
+            else
+                print_error "nginx.conf.template not found"
+            fi
+        else
+            print_info "Skipped Nginx configuration"
+        fi
+    else
+        print_info "Skipped Nginx configuration"
+    fi
+    
+    echo ""
+    print_header "Configuration Complete!"
+    
+    echo -e "${GREEN}Your Photo Registration Form is ready!${NC}"
+    echo ""
+    echo -e "${BLUE}Quick Reference:${NC}"
+    echo -e "  Service status:  ${YELLOW}sudo systemctl status ${SERVICE_NAME}${NC}"
+    echo -e "  View logs:       ${YELLOW}sudo journalctl -u ${SERVICE_NAME} -f${NC}"
+    echo -e "  Reconfigure:     ${YELLOW}sudo bash install.sh${NC} (choose option 3)"
+    echo ""
+    
+    # Show access URLs
+    CURRENT_BIND=$(grep "^GUNICORN_BIND=" "$ENV_FILE" 2>/dev/null | cut -d= -f2)
+    if [[ "$CURRENT_BIND" == "0.0.0.0:5000" ]]; then
+        SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+        echo -e "${BLUE}Access URLs:${NC}"
+        echo -e "  Local:    ${YELLOW}http://127.0.0.1:5000${NC}"
+        if [[ -n "$SERVER_IP" ]]; then
+            echo -e "  Network:  ${YELLOW}http://$SERVER_IP:5000${NC}"
+        fi
+    else
+        echo -e "${BLUE}Access URL:${NC}"
+        echo -e "  Local:    ${YELLOW}http://127.0.0.1:5000${NC}"
+    fi
+    
+    if [[ -n "$hostname" ]] && systemctl is-active --quiet nginx; then
+        echo -e "  Domain:   ${YELLOW}http://$hostname${NC}"
+    fi
+    
+    echo ""
+    echo -e "${BLUE}Documentation:${NC}"
+    echo -e "  Main README:              ${INSTALL_DIR}/README.md"
+    echo -e "  Tunnel Setup:             ${INSTALL_DIR}/TUNNEL-ON-SEPARATE-SERVER.md"
+    echo -e "  systemd & Nginx Guide:    ${INSTALL_DIR}/SYSTEMD-NGINX-MANAGEMENT.md"
+    echo ""
 }
 
 # Main script execution
