@@ -52,8 +52,12 @@ class AdminSettings(db.Model):
     
     @staticmethod
     def get_setting(key, default=None):
-        setting = AdminSettings.query.filter_by(key=key).first()
-        return setting.value if setting else default
+        try:
+            setting = AdminSettings.query.filter_by(key=key).first()
+            return setting.value if setting else default
+        except Exception:
+            # Return default if table doesn't exist or query fails
+            return default
     
     @staticmethod
     def set_setting(key, value):
@@ -102,11 +106,15 @@ class EmailAccount(db.Model):
     @staticmethod
     def get_default():
         """Get the default email account"""
-        account = EmailAccount.query.filter_by(is_default=True, is_active=True).first()
-        if not account:
-            # If no default, get the first active account
-            account = EmailAccount.query.filter_by(is_active=True).first()
-        return account
+        try:
+            account = EmailAccount.query.filter_by(is_default=True, is_active=True).first()
+            if not account:
+                # If no default, get the first active account
+                account = EmailAccount.query.filter_by(is_active=True).first()
+            return account
+        except Exception:
+            # Return None if table doesn't exist or query fails
+            return None
     
     @staticmethod
     def set_default(account_id):
@@ -172,27 +180,39 @@ def register():
         
         if send_confirmation:
             try:
-                # Get default confirmation account from settings
-                confirmation_account_id = AdminSettings.get_setting('DEFAULT_CONFIRMATION_ACCOUNT_ID', '')
+                # Get default confirmation account from settings (safe fallback)
+                confirmation_account_id = None
+                try:
+                    confirmation_account_id = AdminSettings.get_setting('DEFAULT_CONFIRMATION_ACCOUNT_ID', '')
+                except Exception as settings_error:
+                    app.logger.warning(f'Could not get settings: {str(settings_error)}')
                 
                 if confirmation_account_id:
                     # Use specified account from settings
                     default_account = EmailAccount.query.get(int(confirmation_account_id))
                 else:
                     # Fallback to system default account
-                    default_account = EmailAccount.get_default()
+                    try:
+                        default_account = EmailAccount.get_default()
+                    except Exception:
+                        default_account = None
                 
-                email_sent = send_confirmation_email(
-                    registration.email,
-                    registration.first_name,
-                    registration.last_name,
-                    account=default_account
-                )
-                if email_sent:
-                    registration.confirmation_sent = True
-                    db.session.commit()
+                if default_account:
+                    email_sent = send_confirmation_email(
+                        registration.email,
+                        registration.first_name,
+                        registration.last_name,
+                        account=default_account
+                    )
+                    if email_sent:
+                        registration.confirmation_sent = True
+                        db.session.commit()
+                else:
+                    app.logger.warning('No email account configured for confirmations')
             except Exception as e:
                 app.logger.error(f'Failed to send confirmation email: {str(e)}')
+                import traceback
+                app.logger.error(traceback.format_exc())
         
         response_message = 'Registration successful!'
         if email_sent:
@@ -209,7 +229,9 @@ def register():
     except Exception as e:
         db.session.rollback()
         app.logger.error(f'Registration error: {str(e)}')
-        return jsonify({'error': 'Registration failed. Please try again.'}), 500
+        import traceback
+        app.logger.error(traceback.format_exc())
+        return jsonify({'error': f'Registration failed: {str(e)}'}), 500
 
 @app.route('/registrations', methods=['GET'])
 def list_registrations():
