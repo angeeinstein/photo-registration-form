@@ -432,6 +432,43 @@ def admin_send_bulk_photos():
     flash(f'Bulk send complete using "{account.name}": {sent_count} sent, {failed_count} failed', 'success')
     return redirect(url_for('admin_dashboard'))
 
+@app.route('/admin/delete-registration/<int:registration_id>', methods=['POST'])
+@login_required
+def admin_delete_registration(registration_id):
+    """Delete a single registration"""
+    try:
+        registration = Registration.query.get_or_404(registration_id)
+        name = f"{registration.first_name} {registration.last_name}"
+        db.session.delete(registration)
+        db.session.commit()
+        flash(f'Registration for {name} has been deleted', 'success')
+    except Exception as e:
+        app.logger.error(f'Failed to delete registration: {str(e)}')
+        flash(f'Error deleting registration: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/delete-all-registrations', methods=['POST'])
+@login_required
+def admin_delete_all_registrations():
+    """Delete all registrations with confirmation"""
+    confirm = request.form.get('confirm', '')
+    
+    if confirm != 'DELETE ALL':
+        flash('Deletion cancelled: confirmation text did not match', 'error')
+        return redirect(url_for('admin_dashboard'))
+    
+    try:
+        count = Registration.query.count()
+        Registration.query.delete()
+        db.session.commit()
+        flash(f'Successfully deleted all {count} registrations', 'success')
+    except Exception as e:
+        app.logger.error(f'Failed to delete all registrations: {str(e)}')
+        flash(f'Error deleting registrations: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_dashboard'))
+
 # Email Account Management Routes
 @app.route('/admin/email-accounts')
 @login_required
@@ -580,16 +617,24 @@ def admin_test_account(account_id):
     return redirect(url_for('admin_email_accounts'))
 
 # Initialize database
-def init_db():
-    """Initialize the database"""
-    with app.app_context():
-        db.create_all()
-        print("Database initialized successfully!")
-
 # Initialize database
 def init_db():
     """Initialize the database"""
     with app.app_context():
+        # Ensure the database directory exists and is writable
+        db_path = database_uri.replace('sqlite:///', '')
+        db_dir = os.path.dirname(db_path)
+        
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+            print(f"Created database directory: {db_dir}")
+        
+        # Check if database file exists and is writable
+        if os.path.exists(db_path):
+            if not os.access(db_path, os.W_OK):
+                print(f"⚠️  Warning: Database file is not writable: {db_path}")
+                print(f"   Please check file permissions.")
+        
         db.create_all()
         print("Database initialized successfully!")
         

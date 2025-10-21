@@ -192,6 +192,16 @@
             background: #45a049;
         }
 
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            border: none;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
         .bulk-actions {
             margin-top: 20px;
             padding: 20px;
@@ -392,6 +402,9 @@
                                 <input type="text" name="photos_link" placeholder="Photos link (optional)" style="width: 200px; padding: 6px; border: 1px solid #e0e0e0; border-radius: 4px;">
                                 <button type="submit" class="btn btn-success">Send Photos</button>
                             </form>
+                            <form method="POST" action="{{ url_for('admin_delete_registration', registration_id=reg.id) }}" style="display: inline; margin-left: 10px;" onsubmit="return confirm('Are you sure you want to delete this registration for {{ reg.first_name }} {{ reg.last_name }}?');">
+                                <button type="submit" class="btn btn-danger" style="background: #dc3545;">🗑️ Delete</button>
+                            </form>
                         </div>
                     </td>
                 </tr>
@@ -416,6 +429,16 @@
                 </select>
                 <input type="text" name="photos_link" placeholder="Photos link (e.g., Dropbox, Google Drive, etc.)" required>
                 <button type="submit">Send to All</button>
+            </form>
+        </div>
+
+        <div class="bulk-actions" style="margin-top: 20px; border: 2px solid #dc3545;">
+            <h3 style="color: #dc3545;">🗑️ Danger Zone</h3>
+            <p style="color: #dc3545; font-weight: 500;">⚠️ Warning: This will permanently delete all registrations. This action cannot be undone!</p>
+            <form method="POST" action="{{ url_for('admin_delete_all_registrations') }}" class="bulk-form" onsubmit="return confirmDeleteAll();">
+                <label for="confirm_text" style="font-weight: bold;">Type "DELETE ALL" to confirm:</label>
+                <input type="text" name="confirm" id="confirm_text" placeholder="DELETE ALL" required style="width: 200px; padding: 10px; border: 2px solid #dc3545;">
+                <button type="submit" style="background: #dc3545; font-weight: bold;">🗑️ Delete All Registrations</button>
             </form>
         </div>
     </div>
@@ -494,6 +517,9 @@
                             </select>
                             <input type="text" name="photos_link" placeholder="Photos link (optional)" style="width: 200px; padding: 6px; border: 1px solid #e0e0e0; border-radius: 4px;">
                             <button type="submit" class="btn btn-success">Send Photos</button>
+                        </form>
+                        <form method="POST" action="/admin/delete-registration/${reg.id}" style="display: inline; margin-left: 10px;" onsubmit="return confirm('Are you sure you want to delete this registration for ${reg.first_name} ${reg.last_name}?');">
+                            <button type="submit" class="btn btn-danger" style="background: #dc3545;">🗑️ Delete</button>
                         </form>
                     </div>
                 </td>
@@ -637,6 +663,18 @@
                 }
             });
         });
+
+        // Confirm delete all function
+        function confirmDeleteAll() {
+            const input = document.getElementById('confirm_text');
+            if (input.value !== 'DELETE ALL') {
+                alert('Please type "DELETE ALL" exactly to confirm.');
+                return false;
+            }
+            
+            const totalRegistrations = {{ stats.total_registrations }};
+            return confirm(`⚠️ FINAL WARNING ⚠️\n\nYou are about to permanently delete ALL ${totalRegistrations} registrations.\n\nThis action CANNOT be undone!\n\nAre you absolutely sure?`);
+        }
     </script>
 </body>
 </html>
