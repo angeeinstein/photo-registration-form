@@ -548,6 +548,9 @@ curl http://localhost:5000/registrations
 - **[Installation Summary](INSTALLATION-SUMMARY.md)** - 📦 **READ THIS FIRST** - What happens during installation
 - **[Post-Installation Wizard Guide](POST-INSTALL-WIZARD.md)** - 🎯 Step-by-step configuration guide
 
+### 📧 Email System
+- **[Email System Documentation](EMAIL-SYSTEM.md)** - ✉️ **Complete email guide** - Confirmation emails, photos delivery, admin panel
+
 ### 🌐 Network & Tunnel Setup
 - **[Tunnel on Separate Server Guide](TUNNEL-ON-SEPARATE-SERVER.md)** - Setup for Cloudflare Tunnel on different machine
 - **[Port & Tunnel Configuration](PORT-AND-TUNNEL-CONFIG.md)** - Server port and Cloudflare Tunnel setup guide

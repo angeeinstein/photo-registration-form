@@ -1,0 +1,367 @@
+"""
+Email sending module for Photo Registration Form
+Supports generic email sending with templates and SMTP configuration
+"""
+
+import os
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
+from email.mime.base import MIMEBase
+from email import encoders
+from pathlib import Path
+from typing import Optional, List, Dict
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+class EmailSender:
+    """Generic email sender with SMTP configuration"""
+    
+    def __init__(self, 
+                 smtp_server: str,
+                 smtp_port: int,
+                 smtp_username: str,
+                 smtp_password: str,
+                 use_tls: bool = True,
+                 use_ssl: bool = False,
+                 from_email: Optional[str] = None,
+                 from_name: Optional[str] = None):
+        """
+        Initialize email sender with SMTP configuration
+        
+        Args:
+            smtp_server: SMTP server hostname (e.g., smtp.gmail.com)
+            smtp_port: SMTP port (587 for TLS, 465 for SSL, 25 for plain)
+            smtp_username: SMTP authentication username
+            smtp_password: SMTP authentication password
+            use_tls: Use STARTTLS (recommended for port 587)
+            use_ssl: Use SSL/TLS (recommended for port 465)
+            from_email: Sender email address (defaults to smtp_username)
+            from_name: Sender display name
+        """
+        self.smtp_server = smtp_server
+        self.smtp_port = smtp_port
+        self.smtp_username = smtp_username
+        self.smtp_password = smtp_password
+        self.use_tls = use_tls
+        self.use_ssl = use_ssl
+        self.from_email = from_email or smtp_username
+        self.from_name = from_name or "Photo Registration"
+        
+    def send_email(self,
+                   to_email: str,
+                   subject: str,
+                   html_body: str,
+                   text_body: Optional[str] = None,
+                   attachments: Optional[List[str]] = None,
+                   cc: Optional[List[str]] = None,
+                   bcc: Optional[List[str]] = None) -> bool:
+        """
+        Send an email
+        
+        Args:
+            to_email: Recipient email address
+            subject: Email subject
+            html_body: HTML email body
+            text_body: Plain text email body (fallback)
+            attachments: List of file paths to attach
+            cc: List of CC email addresses
+            bcc: List of BCC email addresses
+            
+        Returns:
+            bool: True if email sent successfully, False otherwise
+        """
+        try:
+            # Create message
+            message = MIMEMultipart('alternative')
+            message['Subject'] = subject
+            message['From'] = f"{self.from_name} <{self.from_email}>"
+            message['To'] = to_email
+            
+            if cc:
+                message['Cc'] = ', '.join(cc)
+            if bcc:
+                message['Bcc'] = ', '.join(bcc)
+            
+            # Add plain text version (fallback)
+            if text_body:
+                text_part = MIMEText(text_body, 'plain')
+                message.attach(text_part)
+            
+            # Add HTML version
+            html_part = MIMEText(html_body, 'html')
+            message.attach(html_part)
+            
+            # Add attachments
+            if attachments:
+                for file_path in attachments:
+                    self._attach_file(message, file_path)
+            
+            # Send email
+            recipients = [to_email]
+            if cc:
+                recipients.extend(cc)
+            if bcc:
+                recipients.extend(bcc)
+                
+            self._send_message(message, recipients)
+            
+            logger.info(f"Email sent successfully to {to_email}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send email to {to_email}: {str(e)}")
+            return False
+    
+    def _attach_file(self, message: MIMEMultipart, file_path: str):
+        """Attach a file to the email message"""
+        try:
+            path = Path(file_path)
+            if not path.exists():
+                logger.warning(f"Attachment not found: {file_path}")
+                return
+            
+            # Determine MIME type based on extension
+            extension = path.suffix.lower()
+            
+            if extension in ['.jpg', '.jpeg', '.png', '.gif']:
+                # Image attachment
+                with open(file_path, 'rb') as f:
+                    img = MIMEImage(f.read())
+                    img.add_header('Content-Disposition', 'attachment', filename=path.name)
+                    message.attach(img)
+            else:
+                # Generic file attachment
+                with open(file_path, 'rb') as f:
+                    part = MIMEBase('application', 'octet-stream')
+                    part.set_payload(f.read())
+                    encoders.encode_base64(part)
+                    part.add_header('Content-Disposition', f'attachment; filename={path.name}')
+                    message.attach(part)
+                    
+        except Exception as e:
+            logger.error(f"Failed to attach file {file_path}: {str(e)}")
+    
+    def _send_message(self, message: MIMEMultipart, recipients: List[str]):
+        """Send the email message via SMTP"""
+        if self.use_ssl:
+            # Use SSL from the start (port 465)
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port, context=context) as server:
+                server.login(self.smtp_username, self.smtp_password)
+                server.send_message(message, to_addrs=recipients)
+        else:
+            # Use TLS (STARTTLS) or plain connection
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                if self.use_tls:
+                    context = ssl.create_default_context()
+                    server.starttls(context=context)
+                server.login(self.smtp_username, self.smtp_password)
+                server.send_message(message, to_addrs=recipients)
+    
+    def send_template_email(self,
+                           to_email: str,
+                           template_path: str,
+                           subject: str,
+                           variables: Dict[str, str],
+                           attachments: Optional[List[str]] = None) -> bool:
+        """
+        Send an email using an HTML template
+        
+        Args:
+            to_email: Recipient email address
+            template_path: Path to HTML template file
+            subject: Email subject
+            variables: Dictionary of variables to replace in template
+            attachments: List of file paths to attach
+            
+        Returns:
+            bool: True if email sent successfully, False otherwise
+        """
+        try:
+            # Read template
+            with open(template_path, 'r', encoding='utf-8') as f:
+                html_body = f.read()
+            
+            # Replace variables in template
+            for key, value in variables.items():
+                placeholder = f"{{{{{key}}}}}"  # {{variable_name}}
+                html_body = html_body.replace(placeholder, str(value))
+            
+            # Send email
+            return self.send_email(
+                to_email=to_email,
+                subject=subject,
+                html_body=html_body,
+                attachments=attachments
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to send template email: {str(e)}")
+            return False
+
+
+def create_email_sender_from_env() -> Optional[EmailSender]:
+    """
+    Create an EmailSender instance from environment variables
+    
+    Expected environment variables:
+        SMTP_SERVER: SMTP server hostname
+        SMTP_PORT: SMTP port
+        SMTP_USERNAME: SMTP username
+        SMTP_PASSWORD: SMTP password
+        SMTP_USE_TLS: Use STARTTLS (true/false)
+        SMTP_USE_SSL: Use SSL (true/false)
+        SMTP_FROM_EMAIL: Sender email (optional)
+        SMTP_FROM_NAME: Sender name (optional)
+    
+    Returns:
+        EmailSender instance or None if configuration is incomplete
+    """
+    smtp_server = os.getenv('SMTP_SERVER')
+    smtp_port = os.getenv('SMTP_PORT')
+    smtp_username = os.getenv('SMTP_USERNAME')
+    smtp_password = os.getenv('SMTP_PASSWORD')
+    
+    if not all([smtp_server, smtp_port, smtp_username, smtp_password]):
+        logger.warning("SMTP configuration incomplete in environment variables")
+        return None
+    
+    try:
+        return EmailSender(
+            smtp_server=smtp_server,
+            smtp_port=int(smtp_port),
+            smtp_username=smtp_username,
+            smtp_password=smtp_password,
+            use_tls=os.getenv('SMTP_USE_TLS', 'true').lower() == 'true',
+            use_ssl=os.getenv('SMTP_USE_SSL', 'false').lower() == 'true',
+            from_email=os.getenv('SMTP_FROM_EMAIL'),
+            from_name=os.getenv('SMTP_FROM_NAME', 'Photo Registration')
+        )
+    except Exception as e:
+        logger.error(f"Failed to create email sender: {str(e)}")
+        return None
+
+
+# Convenience functions for common email types
+
+def send_confirmation_email(to_email: str, first_name: str, last_name: str) -> bool:
+    """
+    Send registration confirmation email
+    
+    Args:
+        to_email: Recipient email address
+        first_name: Recipient's first name
+        last_name: Recipient's last name
+        
+    Returns:
+        bool: True if email sent successfully
+    """
+    sender = create_email_sender_from_env()
+    if not sender:
+        logger.error("Email sender not configured")
+        return False
+    
+    template_path = os.path.join(
+        os.path.dirname(__file__),
+        'email_templates',
+        'confirmation_email.html'
+    )
+    
+    variables = {
+        'first_name': first_name,
+        'last_name': last_name,
+        'full_name': f"{first_name} {last_name}",
+        'email': to_email
+    }
+    
+    subject = os.getenv('CONFIRMATION_EMAIL_SUBJECT', 'Registration Confirmation')
+    
+    return sender.send_template_email(
+        to_email=to_email,
+        template_path=template_path,
+        subject=subject,
+        variables=variables
+    )
+
+
+def send_photos_email(to_email: str,
+                     first_name: str,
+                     photos_link: Optional[str] = None,
+                     photo_files: Optional[List[str]] = None) -> bool:
+    """
+    Send photos or photos link email
+    
+    Args:
+        to_email: Recipient email address
+        first_name: Recipient's first name
+        photos_link: URL to photos (if using cloud storage)
+        photo_files: List of photo file paths to attach
+        
+    Returns:
+        bool: True if email sent successfully
+    """
+    sender = create_email_sender_from_env()
+    if not sender:
+        logger.error("Email sender not configured")
+        return False
+    
+    template_path = os.path.join(
+        os.path.dirname(__file__),
+        'email_templates',
+        'photos_email.html'
+    )
+    
+    variables = {
+        'first_name': first_name,
+        'photos_link': photos_link or '#',
+        'has_link': 'true' if photos_link else 'false',
+        'has_attachments': 'true' if photo_files else 'false'
+    }
+    
+    subject = os.getenv('PHOTOS_EMAIL_SUBJECT', 'Your Event Photos')
+    
+    return sender.send_template_email(
+        to_email=to_email,
+        template_path=template_path,
+        subject=subject,
+        variables=variables,
+        attachments=photo_files
+    )
+
+
+def test_email_configuration() -> bool:
+    """
+    Test email configuration by sending a test email
+    
+    Returns:
+        bool: True if test email sent successfully
+    """
+    sender = create_email_sender_from_env()
+    if not sender:
+        return False
+    
+    test_email = os.getenv('TEST_EMAIL', sender.from_email)
+    
+    html_body = """
+    <html>
+        <body>
+            <h2>Email Configuration Test</h2>
+            <p>This is a test email from your Photo Registration Form application.</p>
+            <p>If you received this email, your SMTP configuration is working correctly!</p>
+        </body>
+    </html>
+    """
+    
+    return sender.send_email(
+        to_email=test_email,
+        subject="Photo Registration - Email Test",
+        html_body=html_body,
+        text_body="This is a test email from your Photo Registration Form application."
+    )

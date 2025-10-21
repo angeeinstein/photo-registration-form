@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Photo Registration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #667eea;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 15px;
+        }
+
+        .nav-links a, .nav-links button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .nav-links a:hover, .nav-links button:hover {
+            background: #764ba2;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-card h3 {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-card .status {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .status.active {
+            color: #4CAF50;
+        }
+
+        .status.inactive {
+            color: #f44336;
+        }
+
+        .content {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+
+        .flash {
+            padding: 12px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        .flash.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .flash.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        th {
+            background: #f5f5f5;
+            font-weight: bold;
+            color: #333;
+        }
+
+        tr:hover {
+            background: #f9f9f9;
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .badge.sent {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge.pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #764ba2;
+        }
+
+        .btn-success {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #45a049;
+        }
+
+        .bulk-actions {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+
+        .bulk-actions h3 {
+            margin-bottom: 15px;
+        }
+
+        .bulk-form {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .bulk-form input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+        }
+
+        .bulk-form button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .bulk-form button:hover {
+            background: #764ba2;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 Admin Dashboard</h1>
+        <div class="nav-links">
+            <a href="{{ url_for('admin_settings') }}">⚙️ Settings</a>
+            <a href="{{ url_for('admin_logout') }}">🚪 Logout</a>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-messages">
+                {% for category, message in messages %}
+                    <div class="flash {{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>Total Registrations</h3>
+            <div class="value">{{ stats.total_registrations }}</div>
+        </div>
+        <div class="stat-card">
+            <h3>Confirmations Sent</h3>
+            <div class="value">{{ stats.confirmation_sent }}</div>
+        </div>
+        <div class="stat-card">
+            <h3>Photos Sent</h3>
+            <div class="value">{{ stats.photos_sent }}</div>
+        </div>
+        <div class="stat-card">
+            <h3>Email Status</h3>
+            <div class="status {% if stats.email_configured %}active{% else %}inactive{% endif %}">
+                {% if stats.email_configured %}
+                    ✓ Configured
+                {% else %}
+                    ✗ Not Configured
+                {% endif %}
+            </div>
+            <div class="status {% if stats.auto_confirmation %}active{% else %}inactive{% endif %}">
+                Auto-confirm: {% if stats.auto_confirmation %}ON{% else %}OFF{% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="content">
+        <h2>Registrations</h2>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Registered At</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for reg in registrations %}
+                <tr>
+                    <td>{{ reg.id }}</td>
+                    <td>{{ reg.first_name }} {{ reg.last_name }}</td>
+                    <td>{{ reg.email }}</td>
+                    <td>{{ reg.registered_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        {% if reg.confirmation_sent %}
+                            <span class="badge sent">✓ Confirmed</span>
+                        {% else %}
+                            <span class="badge pending">⏳ Pending</span>
+                        {% endif %}
+                        {% if reg.photos_sent %}
+                            <span class="badge sent">📷 Photos Sent</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="actions">
+                            <form method="POST" action="{{ url_for('admin_send_photos', registration_id=reg.id) }}" style="display: inline;">
+                                <input type="text" name="photos_link" placeholder="Photos link (optional)" style="width: 200px; padding: 6px; border: 1px solid #e0e0e0; border-radius: 4px;">
+                                <button type="submit" class="btn btn-success">Send Photos</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="bulk-actions">
+            <h3>📤 Bulk Send Photos</h3>
+            <p>Send photos email to all registrations that haven't received them yet.</p>
+            <form method="POST" action="{{ url_for('admin_send_bulk_photos') }}" class="bulk-form">
+                <input type="text" name="photos_link" placeholder="Photos link (e.g., Dropbox, Google Drive, etc.)" required>
+                <button type="submit">Send to All</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
