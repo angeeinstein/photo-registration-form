@@ -132,12 +132,6 @@
         </div>
         {% endif %}
 
-        <div class="info-box">
-            <strong>📧 Email Account Management</strong><br>
-            SMTP configuration is now managed through the <a href="{{ url_for('admin_email_accounts') }}">Email Accounts</a> page. 
-            You can add multiple email accounts and choose which one to use for each operation below.
-        </div>
-
         <form method="POST" action="{{ url_for('admin_settings') }}">
             <div class="form-section">
                 <h2>📬 Email Behavior</h2>
