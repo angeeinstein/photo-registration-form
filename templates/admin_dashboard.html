@@ -350,7 +350,8 @@
             <thead>
                 <tr>
                     <th>ID</th>
-                    <th>Name</th>
+                    <th>First Name</th>
+                    <th>Last Name</th>
                     <th>Email</th>
                     <th>Registered At</th>
                     <th>Status</th>
@@ -359,9 +360,10 @@
             </thead>
             <tbody>
                 {% for reg in registrations %}
-                <tr>
+                <tr data-id="{{ reg.id }}">
                     <td>{{ reg.id }}</td>
-                    <td>{{ reg.first_name }} {{ reg.last_name }}</td>
+                    <td>{{ reg.first_name }}</td>
+                    <td>{{ reg.last_name }}</td>
                     <td>{{ reg.email }}</td>
                     <td>{{ reg.registered_at.strftime('%Y-%m-%d %H:%M') }}</td>
                     <td>
@@ -419,6 +421,18 @@
     </div>
 
     <script>
+        // Store email accounts data for dynamic row creation
+        const emailAccounts = [
+            {% if default_account %}
+            { id: {{ default_account.id }}, name: '{{ default_account.name }}', isDefault: true },
+            {% endif %}
+            {% for account in email_accounts %}
+                {% if not default_account or account.id != default_account.id %}
+                { id: {{ account.id }}, name: '{{ account.name }}', isDefault: false },
+                {% endif %}
+            {% endfor %}
+        ];
+
         // Live updates for admin dashboard
         let lastUpdateTime = new Date();
         let isUpdating = false;
@@ -454,6 +468,14 @@
                 ? '<span class="badge sent">📷 Photos Sent</span>' 
                 : '';
             
+            // Build account dropdown options
+            let accountOptions = '';
+            emailAccounts.forEach(account => {
+                const label = account.isDefault ? `${account.name} (Default)` : account.name;
+                const selected = account.isDefault ? 'selected' : '';
+                accountOptions += `<option value="${account.id}" ${selected}>${label}</option>`;
+            });
+            
             row.innerHTML = `
                 <td>${reg.id}</td>
                 <td>${reg.first_name}</td>
@@ -468,14 +490,7 @@
                     <div class="actions">
                         <form method="POST" action="/admin/send-photos/${reg.id}" style="display: inline;">
                             <select name="account_id" style="padding: 6px; border: 1px solid #e0e0e0; border-radius: 4px; margin-right: 5px;">
-                                {% if default_account %}
-                                <option value="{{ default_account.id }}" selected>{{ default_account.name }} (Default)</option>
-                                {% endif %}
-                                {% for account in email_accounts %}
-                                    {% if not default_account or account.id != default_account.id %}
-                                    <option value="{{ account.id }}">{{ account.name }}</option>
-                                    {% endif %}
-                                {% endfor %}
+                                ${accountOptions}
                             </select>
                             <input type="text" name="photos_link" placeholder="Photos link (optional)" style="width: 200px; padding: 6px; border: 1px solid #e0e0e0; border-radius: 4px;">
                             <button type="submit" class="btn btn-success">Send Photos</button>
