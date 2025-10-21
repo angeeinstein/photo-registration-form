@@ -228,6 +228,44 @@ sudo systemctl reload nginx
 
 ### Option 2: Cloudflare Tunnel (For Public Access)
 
+**Important:** The Flask app runs on **port 5000** and binds to **127.0.0.1** (localhost only) by default.
+
+For Cloudflare Tunnel setup, you have two options:
+
+#### Option A: Tunnel on Same Server (Recommended - No Config Changes)
+
+Install cloudflared **on the same server** (e.g., 192.168.1.104) and tunnel to localhost:
+
+```yaml
+service: http://127.0.0.1:5000  # ← Connects locally
+```
+
+**Advantages:** More secure, no network exposure, no changes needed.
+
+#### Option B: Tunnel from Different Machine (Requires Config Change)
+
+If cloudflared runs on a **different machine**, you need to:
+
+1. Change Flask to listen on all interfaces:
+```bash
+# Edit gunicorn_config.py
+sudo nano /opt/photo-registration-form/gunicorn_config.py
+# Change: bind = "127.0.0.1:5000"
+# To:     bind = "0.0.0.0:5000"
+
+# Restart service
+sudo systemctl restart photo-registration
+```
+
+2. Configure tunnel to your server's LAN IP:
+```yaml
+service: http://192.168.1.104:5000  # ← Your server IP
+```
+
+**See [PORT-AND-TUNNEL-CONFIG.md](PORT-AND-TUNNEL-CONFIG.md) for detailed comparison.**
+
+---
+
 #### Install Cloudflared
 
 ```bash
@@ -492,6 +530,8 @@ curl http://localhost:5000/registrations
 
 ## 📚 Documentation
 
+- **[Tunnel on Separate Server Guide](TUNNEL-ON-SEPARATE-SERVER.md)** - Setup for Cloudflare Tunnel on different machine
+- **[Port & Tunnel Configuration](PORT-AND-TUNNEL-CONFIG.md)** - Server port and Cloudflare Tunnel setup guide
 - **[systemd & Nginx Management](SYSTEMD-NGINX-MANAGEMENT.md)** - Complete guide to service configuration
 - **[Install Menu Guide](INSTALL-MENU-GUIDE.md)** - Visual guide to the interactive installation menu
 - **[Quick Reference Guide](QUICK-REFERENCE.md)** - Common commands and operations

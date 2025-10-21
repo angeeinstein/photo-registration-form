@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Interactive menu system in `install.sh` for better user experience
 - Settings configuration menu in `install.sh`
+- **Network binding configuration option** in install script
 - Hostname configuration option
 - Automated Nginx installation and configuration
 - Nginx reverse proxy template (`nginx.conf.template`)
@@ -62,14 +63,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Database backup prompt before uninstall
 - Color-coded menu system for better readability
 - **Complete systemd service management documentation** (`SYSTEMD-NGINX-MANAGEMENT.md`)
+- **Separate server tunnel setup guide** (`TUNNEL-ON-SEPARATE-SERVER.md`)
+- **GUNICORN_BIND environment variable support** in gunicorn_config.py
+- **EnvironmentFile support** in systemd service
 
 ### Changed
 - `install.sh` now shows interactive menu instead of command-line arguments
 - Uninstall functionality integrated into main install script
 - Enhanced user prompts with better descriptions
 - Improved menu navigation with numbered options
+- **gunicorn_config.py now reads GUNICORN_BIND from environment** (default: 127.0.0.1:5000)
+- **systemd service now loads .env file** for configuration
 
 ### Features
+- **Configurable network binding** (localhost only, network access, port 80, custom)
+- **Automatic Cloudflare Tunnel configuration suggestions** based on binding
+- **Port 80 support** with CAP_NET_BIND_SERVICE capability
 - **Full systemd service lifecycle management** (install, enable, start, stop, disable, remove)
 - **Complete Nginx configuration management** (install package, configure, enable, reload, remove)
 - Nginx configuration with automatic hostname setup
@@ -79,8 +88,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 - Added comprehensive systemd and Nginx management guide
+- Added separate server Cloudflare Tunnel setup guide
 - Documented all automated configuration steps
-- Clarified what install.sh manages vs. manual configuration
+- Clarified network binding options
+- Added security considerations for network exposure
 
 ## [1.0.0] - 2025-10-21
 - Rate limiting for form submissions

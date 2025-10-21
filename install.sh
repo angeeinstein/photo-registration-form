@@ -349,28 +349,32 @@ configure_settings() {
     
     echo "Available settings to configure:"
     echo ""
-    print_menu "1) Change hostname for Nginx"
-    print_menu "2) Install/Update Nginx configuration"
-    print_menu "3) Edit .env file"
-    print_menu "4) Change SECRET_KEY"
-    print_menu "5) Back to main menu"
+    print_menu "1) Configure network binding (localhost vs network access)"
+    print_menu "2) Change hostname for Nginx"
+    print_menu "3) Install/Update Nginx configuration"
+    print_menu "4) Edit .env file"
+    print_menu "5) Change SECRET_KEY"
+    print_menu "6) Back to main menu"
     echo ""
-    read -p "Enter your choice [1-5]: " choice
+    read -p "Enter your choice [1-6]: " choice
     
     case $choice in
         1)
-            configure_hostname
+            configure_network_binding
             ;;
         2)
-            install_nginx_config
+            configure_hostname
             ;;
         3)
-            edit_env_file
+            install_nginx_config
             ;;
         4)
-            change_secret_key
+            edit_env_file
             ;;
         5)
+            change_secret_key
+            ;;
+        6)
             main
             ;;
         *)
@@ -378,6 +382,174 @@ configure_settings() {
             configure_settings
             ;;
     esac
+}
+
+# Configure network binding
+configure_network_binding() {
+    print_header "Configure Network Binding"
+    
+    echo "Current binding configuration:"
+    if [[ -f "$ENV_FILE" ]]; then
+        CURRENT_BIND=$(grep "^GUNICORN_BIND=" "$ENV_FILE" | cut -d= -f2)
+        if [[ -z "$CURRENT_BIND" ]]; then
+            CURRENT_BIND="127.0.0.1:5000 (default)"
+        fi
+        echo "  $CURRENT_BIND"
+    else
+        echo "  127.0.0.1:5000 (default)"
+    fi
+    
+    echo ""
+    echo "Choose binding configuration:"
+    echo ""
+    print_menu "1) Localhost only - 127.0.0.1:5000 (Most secure, for Cloudflare Tunnel on same server)"
+    print_menu "2) Network access - 0.0.0.0:5000 (For Cloudflare Tunnel on different server)"
+    print_menu "3) Network on port 80 - 0.0.0.0:80 (For direct access without port, requires nginx or privileges)"
+    print_menu "4) Custom binding"
+    print_menu "5) Back to settings menu"
+    echo ""
+    read -p "Enter your choice [1-5]: " bind_choice
+    
+    case $bind_choice in
+        1)
+            NEW_BIND="127.0.0.1:5000"
+            print_info "Setting to localhost only (127.0.0.1:5000)"
+            ;;
+        2)
+            NEW_BIND="0.0.0.0:5000"
+            print_info "Setting to network access (0.0.0.0:5000)"
+            print_warning "Application will be accessible from LAN"
+            ;;
+        3)
+            NEW_BIND="0.0.0.0:80"
+            print_info "Setting to network port 80 (0.0.0.0:80)"
+            print_warning "Running on port 80 requires special configuration"
+            print_warning "Consider using nginx as reverse proxy instead"
+            ;;
+        4)
+            read -p "Enter custom bind address (e.g., 192.168.1.104:5000): " NEW_BIND
+            if [[ -z "$NEW_BIND" ]]; then
+                print_error "Binding cannot be empty"
+                read -p "Press Enter to continue..."
+                configure_network_binding
+                return 1
+            fi
+            ;;
+        5)
+            configure_settings
+            return 0
+            ;;
+        *)
+            print_error "Invalid choice"
+            configure_network_binding
+            return 1
+            ;;
+    esac
+    
+    # Update .env file
+    if [[ ! -f "$ENV_FILE" ]]; then
+        print_error ".env file not found at $ENV_FILE"
+        read -p "Press Enter to continue..."
+        configure_settings
+        return 1
+    fi
+    
+    # Update or add GUNICORN_BIND
+    if grep -q "^GUNICORN_BIND=" "$ENV_FILE"; then
+        sed -i "s|^GUNICORN_BIND=.*|GUNICORN_BIND=$NEW_BIND|" "$ENV_FILE"
+    else
+        echo "GUNICORN_BIND=$NEW_BIND" >> "$ENV_FILE"
+    fi
+    
+    print_success "Binding updated to: $NEW_BIND"
+    
+    # If using port 80, check for privileges
+    if [[ "$NEW_BIND" == *":80" ]]; then
+        echo ""
+        print_warning "Port 80 requires special privileges!"
+        echo "Option 1: Run with CAP_NET_BIND_SERVICE capability (recommended)"
+        echo "Option 2: Use nginx as reverse proxy (recommended)"
+        echo "Option 3: Run as root (NOT recommended)"
+        echo ""
+        echo "The service file needs to be updated. Do you want to add CAP_NET_BIND_SERVICE?"
+        read -p "Add capability? (y/n): " add_cap
+        
+        if [[ "$add_cap" == "y" ]] || [[ "$add_cap" == "Y" ]]; then
+            # Add capability to service file
+            if grep -q "^AmbientCapabilities=" "$SERVICE_FILE"; then
+                sed -i "s|^AmbientCapabilities=.*|AmbientCapabilities=CAP_NET_BIND_SERVICE|" "$SERVICE_FILE"
+            else
+                sed -i "/^\[Service\]/a AmbientCapabilities=CAP_NET_BIND_SERVICE" "$SERVICE_FILE"
+            fi
+            systemctl daemon-reload
+            print_success "Added CAP_NET_BIND_SERVICE capability"
+        fi
+    fi
+    
+    # Show Cloudflare Tunnel config suggestion
+    echo ""
+    print_info "For Cloudflare Tunnel configuration:"
+    if [[ "$NEW_BIND" == "127.0.0.1:5000" ]]; then
+        echo "  service: http://127.0.0.1:5000"
+        echo "  (Tunnel must run on this server)"
+    elif [[ "$NEW_BIND" == "0.0.0.0:5000" ]]; then
+        # Try to detect server IP
+        SERVER_IP=$(hostname -I | awk '{print $1}')
+        if [[ -n "$SERVER_IP" ]]; then
+            echo "  service: http://$SERVER_IP:5000"
+        else
+            echo "  service: http://YOUR-SERVER-IP:5000"
+        fi
+        echo "  (Tunnel can run on different server)"
+    elif [[ "$NEW_BIND" == "0.0.0.0:80" ]]; then
+        SERVER_IP=$(hostname -I | awk '{print $1}')
+        if [[ -n "$SERVER_IP" ]]; then
+            echo "  service: http://$SERVER_IP"
+        else
+            echo "  service: http://YOUR-SERVER-IP"
+        fi
+        echo "  (No port needed - using port 80)"
+    else
+        echo "  service: http://$NEW_BIND"
+    fi
+    
+    echo ""
+    print_info "Restarting service to apply changes..."
+    systemctl restart ${SERVICE_NAME}
+    
+    if systemctl is-active --quiet ${SERVICE_NAME}; then
+        print_success "Service restarted successfully"
+        
+        # Test the new binding
+        echo ""
+        print_info "Testing new configuration..."
+        sleep 2
+        
+        if [[ "$NEW_BIND" == "127.0.0.1:5000" ]]; then
+            TEST_URL="http://127.0.0.1:5000/health"
+        else
+            SERVER_IP=$(hostname -I | awk '{print $1}')
+            if [[ "$NEW_BIND" == *":80" ]]; then
+                TEST_URL="http://${SERVER_IP}/health"
+            else
+                PORT=$(echo "$NEW_BIND" | cut -d: -f2)
+                TEST_URL="http://${SERVER_IP}:${PORT}/health"
+            fi
+        fi
+        
+        if curl -s "$TEST_URL" > /dev/null 2>&1; then
+            print_success "Application is responding at: $TEST_URL"
+        else
+            print_warning "Could not test $TEST_URL (this may be normal)"
+        fi
+    else
+        print_error "Service failed to start. Check logs:"
+        journalctl -u ${SERVICE_NAME} -n 20 --no-pager
+    fi
+    
+    echo ""
+    read -p "Press Enter to continue..."
+    configure_settings
 }
 
 # Configure hostname

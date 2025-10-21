@@ -1,8 +1,11 @@
 # Gunicorn configuration file
 import multiprocessing
+import os
 
 # Server socket
-bind = "127.0.0.1:5000"
+# Change to "0.0.0.0:80" for network access (requires root or CAP_NET_BIND_SERVICE)
+# Or "0.0.0.0:5000" for network access on non-privileged port
+bind = os.environ.get("GUNICORN_BIND", "127.0.0.1:5000")
 backlog = 2048
 
 # Worker processes

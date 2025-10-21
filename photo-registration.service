@@ -9,6 +9,7 @@ Group=www-data
 WorkingDirectory=/opt/photo-registration-form
 Environment="PATH=/opt/photo-registration-form/venv/bin"
 Environment="SECRET_KEY=your-secret-key-change-me"
+EnvironmentFile=-/opt/photo-registration-form/.env
 ExecStartPre=/bin/mkdir -p /var/log/photo-registration
 ExecStartPre=/bin/mkdir -p /var/run/photo-registration
 ExecStartPre=/bin/chown www-data:www-data /var/log/photo-registration
