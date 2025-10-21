@@ -340,9 +340,11 @@ def admin_settings():
         # Update default email account selections
         confirmation_account_id = request.form.get('confirmation_account_id', '')
         photos_account_id = request.form.get('photos_account_id', '')
+        test_account_id = request.form.get('test_account_id', '')
         
         AdminSettings.set_setting('DEFAULT_CONFIRMATION_ACCOUNT_ID', confirmation_account_id)
         AdminSettings.set_setting('DEFAULT_PHOTOS_ACCOUNT_ID', photos_account_id)
+        AdminSettings.set_setting('DEFAULT_TEST_ACCOUNT_ID', test_account_id)
         
         flash('Settings saved successfully!', 'success')
         return redirect(url_for('admin_settings'))
@@ -351,6 +353,7 @@ def admin_settings():
     send_confirmation = AdminSettings.get_setting('SEND_CONFIRMATION_EMAIL', os.getenv('SEND_CONFIRMATION_EMAIL', 'true'))
     confirmation_account_id = AdminSettings.get_setting('DEFAULT_CONFIRMATION_ACCOUNT_ID', '')
     photos_account_id = AdminSettings.get_setting('DEFAULT_PHOTOS_ACCOUNT_ID', '')
+    test_account_id = AdminSettings.get_setting('DEFAULT_TEST_ACCOUNT_ID', '')
     
     # Get all active email accounts
     email_accounts = EmailAccount.query.filter_by(is_active=True).all()
@@ -359,6 +362,7 @@ def admin_settings():
                          send_confirmation=send_confirmation,
                          confirmation_account_id=confirmation_account_id,
                          photos_account_id=photos_account_id,
+                         test_account_id=test_account_id,
                          email_accounts=email_accounts)
 
 @app.route('/admin/resend-confirmation/<int:registration_id>', methods=['POST'])
@@ -367,19 +371,14 @@ def admin_resend_confirmation(registration_id):
     """Resend confirmation email to a specific registration"""
     try:
         registration = Registration.query.get_or_404(registration_id)
-        account_id = request.form.get('account_id')
         
-        # Get selected account or use default from settings
-        if account_id:
-            account = EmailAccount.query.get(int(account_id))
+        # Get default confirmation account from settings
+        confirmation_account_id = AdminSettings.get_setting('DEFAULT_CONFIRMATION_ACCOUNT_ID', '')
+        if confirmation_account_id:
+            account = EmailAccount.query.get(int(confirmation_account_id))
         else:
-            # Try to get default confirmation account from settings
-            confirmation_account_id = AdminSettings.get_setting('DEFAULT_CONFIRMATION_ACCOUNT_ID', '')
-            if confirmation_account_id:
-                account = EmailAccount.query.get(int(confirmation_account_id))
-            else:
-                # Fallback to system default
-                account = EmailAccount.get_default()
+            # Fallback to system default
+            account = EmailAccount.get_default()
         
         if not account:
             flash('No email account configured', 'error')
@@ -410,22 +409,17 @@ def admin_send_photos(registration_id):
     try:
         registration = Registration.query.get_or_404(registration_id)
         photos_link = request.form.get('photos_link', '')
-        account_id = request.form.get('account_id')
         
-        # Get selected account or use default from settings
-        if account_id:
-            account = EmailAccount.query.get(int(account_id))
+        # Get default photos account from settings
+        photos_account_id = AdminSettings.get_setting('DEFAULT_PHOTOS_ACCOUNT_ID', '')
+        if photos_account_id:
+            account = EmailAccount.query.get(int(photos_account_id))
         else:
-            # Try to get default photos account from settings
-            photos_account_id = AdminSettings.get_setting('DEFAULT_PHOTOS_ACCOUNT_ID', '')
-            if photos_account_id:
-                account = EmailAccount.query.get(int(photos_account_id))
-            else:
-                # Fallback to system default
-                account = EmailAccount.get_default()
+            # Fallback to system default
+            account = EmailAccount.get_default()
         
         if not account:
-            flash('No email account configured', 'error')
+            flash('No email account configured. Please set up in Settings.', 'error')
             return redirect(url_for('admin_dashboard'))
         
         success = send_photos_email(
@@ -451,24 +445,19 @@ def admin_send_photos(registration_id):
 def admin_send_bulk_photos():
     """Send photos email to all registrations"""
     photos_link = request.form.get('photos_link', '')
-    account_id = request.form.get('account_id')
     sent_count = 0
     failed_count = 0
     
-    # Get selected account or use default from settings
-    if account_id:
-        account = EmailAccount.query.get(int(account_id))
+    # Get default photos account from settings
+    photos_account_id = AdminSettings.get_setting('DEFAULT_PHOTOS_ACCOUNT_ID', '')
+    if photos_account_id:
+        account = EmailAccount.query.get(int(photos_account_id))
     else:
-        # Try to get default photos account from settings
-        photos_account_id = AdminSettings.get_setting('DEFAULT_PHOTOS_ACCOUNT_ID', '')
-        if photos_account_id:
-            account = EmailAccount.query.get(int(photos_account_id))
-        else:
-            # Fallback to system default
-            account = EmailAccount.get_default()
+        # Fallback to system default
+        account = EmailAccount.get_default()
     
     if not account:
-        flash('No email account configured', 'error')
+        flash('No email account configured. Please set up in Settings.', 'error')
         return redirect(url_for('admin_dashboard'))
     
     registrations = Registration.query.filter_by(photos_sent=False).all()

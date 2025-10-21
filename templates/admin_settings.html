@@ -158,8 +158,7 @@
             <div class="form-section">
                 <h2>📧 Default Email Accounts</h2>
                 <p style="color: #666; margin-bottom: 20px; font-size: 14px;">
-                    Select which email account to use by default for each type of email. 
-                    You can still override these on the dashboard when sending individual or bulk emails.
+                    Select which email account to use for each type of email operation.
                 </p>
                 
                 <div class="setting-item">
@@ -184,7 +183,7 @@
                 <div class="setting-item">
                     <div>
                         <div class="setting-label">Photo Emails Account</div>
-                        <div class="setting-description">Used by default when sending photos from the dashboard</div>
+                        <div class="setting-description">Used when sending photos from the dashboard (single or bulk)</div>
                     </div>
                     <div class="select-wrapper">
                         <select name="photos_account_id" id="photos_account_id">
@@ -192,6 +191,25 @@
                             {% for account in email_accounts %}
                             <option value="{{ account.id }}" 
                                     {% if photos_account_id == account.id|string %}selected{% endif %}>
+                                {{ account.name }} ({{ account.from_email }})
+                                {% if account.is_default %}★ Default{% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Test Emails Account</div>
+                        <div class="setting-description">Used for testing email configuration from the Email Accounts page</div>
+                    </div>
+                    <div class="select-wrapper">
+                        <select name="test_account_id" id="test_account_id">
+                            <option value="">-- Use System Default --</option>
+                            {% for account in email_accounts %}
+                            <option value="{{ account.id }}" 
+                                    {% if test_account_id == account.id|string %}selected{% endif %}>
                                 {{ account.name }} ({{ account.from_email }})
                                 {% if account.is_default %}★ Default{% endif %}
                             </option>
