@@ -339,6 +339,48 @@ def admin_settings():
                          photos_account_id=photos_account_id,
                          email_accounts=email_accounts)
 
+@app.route('/admin/resend-confirmation/<int:registration_id>', methods=['POST'])
+@login_required
+def admin_resend_confirmation(registration_id):
+    """Resend confirmation email to a specific registration"""
+    try:
+        registration = Registration.query.get_or_404(registration_id)
+        account_id = request.form.get('account_id')
+        
+        # Get selected account or use default from settings
+        if account_id:
+            account = EmailAccount.query.get(int(account_id))
+        else:
+            # Try to get default confirmation account from settings
+            confirmation_account_id = AdminSettings.get_setting('DEFAULT_CONFIRMATION_ACCOUNT_ID', '')
+            if confirmation_account_id:
+                account = EmailAccount.query.get(int(confirmation_account_id))
+            else:
+                # Fallback to system default
+                account = EmailAccount.get_default()
+        
+        if not account:
+            flash('No email account configured', 'error')
+            return redirect(url_for('admin_dashboard'))
+        
+        success = send_confirmation_email(
+            registration.email,
+            registration.first_name,
+            registration.last_name,
+            account=account
+        )
+        
+        if success:
+            registration.confirmation_sent = True
+            db.session.commit()
+            flash(f'Confirmation email resent to {registration.email} from "{account.name}"', 'success')
+        else:
+            flash(f'Failed to resend confirmation email to {registration.email}', 'error')
+    except Exception as e:
+        flash(f'Error: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_dashboard'))
+
 @app.route('/admin/send-photos/<int:registration_id>', methods=['POST'])
 @login_required
 def admin_send_photos(registration_id):

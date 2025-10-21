@@ -1129,8 +1129,50 @@ fresh_installation() {
         SECRET_KEY=$(openssl rand -hex 32 2>/dev/null || cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 64 | head -n 1)
         sed -i "s/your-secret-key-change-me-in-production/$SECRET_KEY/" "${INSTALL_DIR}/.env"
         
-        print_warning "Please review and update ${INSTALL_DIR}/.env file with your settings"
+        # Interactive setup for admin credentials
+        print_header "Admin Panel Setup"
+        echo ""
+        print_info "Let's configure your admin credentials for the web interface."
+        echo ""
+        
+        # Ask for admin username
+        read -p "Enter admin username (default: admin): " ADMIN_USER
+        ADMIN_USER=${ADMIN_USER:-admin}
+        
+        # Ask for admin password (with confirmation)
+        while true; do
+            read -s -p "Enter admin password: " ADMIN_PASS1
+            echo ""
+            read -s -p "Confirm admin password: " ADMIN_PASS2
+            echo ""
+            
+            if [[ "$ADMIN_PASS1" == "$ADMIN_PASS2" ]]; then
+                if [[ -z "$ADMIN_PASS1" ]]; then
+                    print_error "Password cannot be empty. Please try again."
+                    echo ""
+                else
+                    break
+                fi
+            else
+                print_error "Passwords do not match. Please try again."
+                echo ""
+            fi
+        done
+        
+        # Update .env file with admin credentials
+        sed -i "s/ADMIN_USERNAME=admin/ADMIN_USERNAME=$ADMIN_USER/" "${INSTALL_DIR}/.env"
+        sed -i "s/ADMIN_PASSWORD=change-me-in-production/ADMIN_PASSWORD=$ADMIN_PASS1/" "${INSTALL_DIR}/.env"
+        
+        print_success "Admin credentials configured successfully!"
+        print_info "Username: $ADMIN_USER"
+        print_info "Password: [hidden]"
+        echo ""
+        
+        print_info "You can change these later by editing: ${INSTALL_DIR}/.env"
+        echo ""
+        
         chown ${SYSTEM_USER}:${SYSTEM_GROUP} "${INSTALL_DIR}/.env"
+        chmod 600 "${INSTALL_DIR}/.env"  # Secure the .env file
     fi
     
     # Install systemd service
