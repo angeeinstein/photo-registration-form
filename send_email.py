@@ -210,6 +210,7 @@ class EmailSender:
 def create_email_sender_from_env() -> Optional[EmailSender]:
     """
     Create an EmailSender instance from environment variables
+    DEPRECATED: Use create_email_sender_from_account() instead
     
     Expected environment variables:
         SMTP_SERVER: SMTP server hostname
@@ -249,9 +250,46 @@ def create_email_sender_from_env() -> Optional[EmailSender]:
         return None
 
 
+def create_email_sender_from_account(account) -> Optional[EmailSender]:
+    """
+    Create an EmailSender instance from a database EmailAccount object
+    
+    Args:
+        account: EmailAccount database object
+    
+    Returns:
+        EmailSender instance or None if account is invalid
+    """
+    if not account:
+        logger.error("No email account provided")
+        return None
+    
+    try:
+        sender = EmailSender(
+            smtp_server=account.smtp_server,
+            smtp_port=account.smtp_port,
+            smtp_username=account.smtp_username,
+            smtp_password=account.smtp_password,
+            use_tls=account.use_tls,
+            use_ssl=account.use_ssl,
+            from_email=account.from_email,
+            from_name=account.from_name
+        )
+        
+        # Update last_used timestamp
+        from datetime import datetime
+        account.last_used = datetime.utcnow()
+        # Note: Caller should commit the session
+        
+        return sender
+    except Exception as e:
+        logger.error(f"Failed to create email sender from account: {str(e)}")
+        return None
+
+
 # Convenience functions for common email types
 
-def send_confirmation_email(to_email: str, first_name: str, last_name: str) -> bool:
+def send_confirmation_email(to_email: str, first_name: str, last_name: str, account=None) -> bool:
     """
     Send registration confirmation email
     
@@ -259,11 +297,17 @@ def send_confirmation_email(to_email: str, first_name: str, last_name: str) -> b
         to_email: Recipient email address
         first_name: Recipient's first name
         last_name: Recipient's last name
+        account: EmailAccount object (optional, uses default if not provided)
         
     Returns:
         bool: True if email sent successfully
     """
-    sender = create_email_sender_from_env()
+    # Try database account first, fall back to env
+    if account:
+        sender = create_email_sender_from_account(account)
+    else:
+        sender = create_email_sender_from_env()
+    
     if not sender:
         logger.error("Email sender not configured")
         return False
@@ -281,6 +325,7 @@ def send_confirmation_email(to_email: str, first_name: str, last_name: str) -> b
         'email': to_email
     }
     
+    # Get subject from environment or use default
     subject = os.getenv('CONFIRMATION_EMAIL_SUBJECT', 'Registration Confirmation')
     
     return sender.send_template_email(
@@ -294,7 +339,8 @@ def send_confirmation_email(to_email: str, first_name: str, last_name: str) -> b
 def send_photos_email(to_email: str,
                      first_name: str,
                      photos_link: Optional[str] = None,
-                     photo_files: Optional[List[str]] = None) -> bool:
+                     photo_files: Optional[List[str]] = None,
+                     account=None) -> bool:
     """
     Send photos or photos link email
     
@@ -303,11 +349,17 @@ def send_photos_email(to_email: str,
         first_name: Recipient's first name
         photos_link: URL to photos (if using cloud storage)
         photo_files: List of photo file paths to attach
+        account: EmailAccount object (optional, uses default if not provided)
         
     Returns:
         bool: True if email sent successfully
     """
-    sender = create_email_sender_from_env()
+    # Try database account first, fall back to env
+    if account:
+        sender = create_email_sender_from_account(account)
+    else:
+        sender = create_email_sender_from_env()
+    
     if not sender:
         logger.error("Email sender not configured")
         return False
@@ -325,6 +377,7 @@ def send_photos_email(to_email: str,
         'has_attachments': 'true' if photo_files else 'false'
     }
     
+    # Get subject from environment or use default
     subject = os.getenv('PHOTOS_EMAIL_SUBJECT', 'Your Event Photos')
     
     return sender.send_template_email(
@@ -336,18 +389,35 @@ def send_photos_email(to_email: str,
     )
 
 
-def test_email_configuration() -> bool:
+def test_email_configuration(account=None, test_email=None) -> bool:
     """
     Test email configuration by sending a test email
+    
+    Args:
+        account: EmailAccount object (optional, uses default if not provided)
+        test_email: Custom email address to send test to (optional)
     
     Returns:
         bool: True if test email sent successfully
     """
-    sender = create_email_sender_from_env()
+    # Try database account first, fall back to env
+    if account:
+        sender = create_email_sender_from_account(account)
+        # Use provided test_email, or fallback to account's from_email
+        if not test_email:
+            test_email = account.from_email
+    else:
+        sender = create_email_sender_from_env()
+        # Use provided test_email, or fallback to TEST_EMAIL env var, or sender's from_email
+        if not test_email:
+            test_email = os.getenv('TEST_EMAIL', sender.from_email if sender else None)
+    
     if not sender:
         return False
     
-    test_email = os.getenv('TEST_EMAIL', sender.from_email)
+    if not test_email:
+        logger.error("No test email address configured")
+        return False
     
     html_body = """
     <html>
