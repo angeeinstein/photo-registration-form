@@ -55,7 +55,6 @@
             border-radius: 10px;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             max-width: 800px;
-            margin: 0 auto;
         }
 
         .flash-messages {
@@ -63,67 +62,69 @@
         }
 
         .flash {
-            padding: 12px;
+            padding: 15px;
             border-radius: 5px;
             margin-bottom: 10px;
         }
 
         .flash.success {
-            background-color: #d4edda;
+            background: #d4edda;
             color: #155724;
             border: 1px solid #c3e6cb;
         }
 
         .flash.error {
-            background-color: #f8d7da;
+            background: #f8d7da;
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
 
+        .info-box {
+            padding: 15px;
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+
+        .info-box a {
+            color: #2196F3;
+            text-decoration: underline;
+        }
+
         .form-section {
-            margin-bottom: 30px;
+            margin: 30px 0;
             padding: 20px;
             background: #f9f9f9;
             border-radius: 8px;
         }
 
         .form-section h2 {
-            margin-bottom: 20px;
             color: #667eea;
-            font-size: 20px;
-        }
-
-        .form-group {
             margin-bottom: 20px;
         }
 
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #333;
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .setting-item:last-child {
+            border-bottom: none;
+        }
+
+        .setting-label {
             font-weight: 500;
+            color: #333;
         }
 
-        label .hint {
-            font-weight: normal;
-            color: #666;
+        .setting-description {
             font-size: 14px;
-        }
-
-        input[type="text"],
-        input[type="password"],
-        input[type="number"],
-        select {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 5px;
-            font-size: 16px;
-        }
-
-        input:focus, select:focus {
-            outline: none;
-            border-color: #667eea;
+            color: #666;
+            margin-top: 5px;
         }
 
         .checkbox-group {
@@ -135,88 +136,46 @@
         .checkbox-group input[type="checkbox"] {
             width: 20px;
             height: 20px;
+            cursor: pointer;
         }
 
-        .button-group {
-            display: flex;
-            gap: 10px;
-            margin-top: 30px;
-        }
-
-        button {
-            padding: 12px 30px;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            font-weight: bold;
+        .checkbox-group label {
+            margin: 0;
             cursor: pointer;
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #667eea;
             color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 20px;
         }
 
         .btn-primary:hover {
-            opacity: 0.9;
+            background: #764ba2;
         }
 
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            background: #5a6268;
-        }
-
-        .info-box {
-            padding: 15px;
-            background: #e7f3ff;
-            border-left: 4px solid #2196F3;
-            border-radius: 4px;
-            margin: 20px 0;
-        }
-
-        .warning-box {
-            padding: 15px;
-            background: #fff3cd;
-            border-left: 4px solid #ffc107;
-            border-radius: 4px;
-            margin: 20px 0;
-        }
-
-        .templates-list {
-            margin-top: 15px;
-            padding: 15px;
+        .settings-card {
             background: white;
-            border-radius: 4px;
+            padding: 20px;
+            border-radius: 8px;
             border: 1px solid #e0e0e0;
+            margin-bottom: 20px;
         }
 
-        .templates-list h4 {
-            margin-bottom: 10px;
+        .settings-card h3 {
             color: #667eea;
-        }
-
-        .templates-list ul {
-            list-style: none;
-            padding-left: 0;
-        }
-
-        .templates-list li {
-            padding: 8px;
-            border-bottom: 1px solid #f0f0f0;
-        }
-
-        .templates-list li:last-child {
-            border-bottom: none;
+            margin-bottom: 15px;
         }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>⚙️ Email Settings</h1>
+        <h1>⚙️ Application Settings</h1>
         <div class="nav-links">
             <a href="{{ url_for('admin_email_accounts') }}">📧 Email Accounts</a>
             <a href="{{ url_for('admin_dashboard') }}">← Back to Dashboard</a>
@@ -235,173 +194,47 @@
 
     <div class="content">
         <div class="info-box">
-            <strong>ℹ️ Note:</strong> Changes made here will be saved to the database for immediate effect. 
-            For permanent changes, update the <code>.env</code> file and restart the service.
+            <strong>📧 Email Account Management</strong><br>
+            SMTP configuration is now managed through the <a href="{{ url_for('admin_email_accounts') }}">Email Accounts</a> page. 
+            You can add multiple email accounts and choose which one to use for each operation.
         </div>
 
         <form method="POST" action="{{ url_for('admin_settings') }}">
-            <!-- SMTP Configuration -->
             <div class="form-section">
-                <h2>📧 SMTP Server Configuration</h2>
+                <h2>📬 Email Behavior</h2>
                 
-                <div class="form-group">
-                    <label for="smtp_server">
-                        SMTP Server
-                        <span class="hint">(e.g., smtp.gmail.com, smtp.office365.com)</span>
-                    </label>
-                    <input type="text" id="smtp_server" name="smtp_server" 
-                           value="{{ settings.smtp_server }}" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="smtp_port">
-                        SMTP Port
-                        <span class="hint">(587 for TLS, 465 for SSL, 25 for plain)</span>
-                    </label>
-                    <input type="number" id="smtp_port" name="smtp_port" 
-                           value="{{ settings.smtp_port }}" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="smtp_username">SMTP Username</label>
-                    <input type="text" id="smtp_username" name="smtp_username" 
-                           value="{{ settings.smtp_username }}" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="smtp_password">SMTP Password / App Password</label>
-                    <input type="password" id="smtp_password" name="smtp_password" 
-                           placeholder="Leave blank to keep current password">
-                </div>
-
-                <div class="form-group checkbox-group">
-                    <input type="checkbox" id="smtp_use_tls" name="smtp_use_tls" value="true"
-                           {% if settings.smtp_use_tls == 'true' %}checked{% endif %}>
-                    <label for="smtp_use_tls">Use TLS (STARTTLS) - Recommended for port 587</label>
-                </div>
-
-                <div class="warning-box">
-                    <strong>⚠️ Gmail Users:</strong> You need to use an "App Password" instead of your regular password. 
-                    Go to Google Account → Security → 2-Step Verification → App passwords to generate one.
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Automatic Confirmation Emails</div>
+                        <div class="setting-description">Send a confirmation email when someone registers</div>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="send_confirmation" name="send_confirmation" value="true"
+                               {% if send_confirmation == 'true' %}checked{% endif %}>
+                        <label for="send_confirmation">Enable</label>
+                    </div>
                 </div>
             </div>
 
-            <!-- Email Settings -->
-            <div class="form-section">
-                <h2>✉️ Email Settings</h2>
-                
-                <div class="form-group">
-                    <label for="smtp_from_email">From Email Address</label>
-                    <input type="text" id="smtp_from_email" name="smtp_from_email" 
-                           value="{{ settings.smtp_from_email }}">
-                </div>
-
-                <div class="form-group">
-                    <label for="smtp_from_name">From Name</label>
-                    <input type="text" id="smtp_from_name" name="smtp_from_name" 
-                           value="{{ settings.smtp_from_name }}">
-                </div>
-
-                <div class="form-group checkbox-group">
-                    <input type="checkbox" id="send_confirmation" name="send_confirmation" value="true"
-                           {% if settings.send_confirmation == 'true' %}checked{% endif %}>
-                    <label for="send_confirmation">
-                        <strong>Send Automatic Confirmation Emails</strong>
-                        <span class="hint">Emails will be sent immediately after registration</span>
-                    </label>
-                </div>
-
-                <div class="form-group">
-                    <label for="confirmation_subject">Confirmation Email Subject</label>
-                    <input type="text" id="confirmation_subject" name="confirmation_subject" 
-                           value="{{ settings.confirmation_subject }}">
-                </div>
-
-                <div class="form-group">
-                    <label for="photos_subject">Photos Email Subject</label>
-                    <input type="text" id="photos_subject" name="photos_subject" 
-                           value="{{ settings.photos_subject }}">
-                </div>
-            </div>
-
-            <!-- Email Templates -->
-            <div class="form-section">
-                <h2>📄 Email Templates</h2>
-                
-                <div class="templates-list">
-                    <h4>Available Templates:</h4>
-                    <ul>
-                        {% for template in templates %}
-                        <li>📧 {{ template }}</li>
-                        {% endfor %}
-                    </ul>
-                    <p style="margin-top: 15px; color: #666; font-size: 14px;">
-                        Templates are located in <code>email_templates/</code> directory. 
-                        You can edit them directly or create custom templates.
-                    </p>
-                </div>
-
-                <div class="info-box" style="margin-top: 15px;">
-                    <strong>Template Variables:</strong><br>
-                    Use <code>{{'{{'}}variable_name{{'}}'}}</code> in templates:<br>
-                    • <code>{{'{{'}}first_name{{'}}'}}</code>, <code>{{'{{'}}last_name{{'}}'}}</code>, <code>{{'{{'}}full_name{{'}}'}}</code><br>
-                    • <code>{{'{{'}}email{{'}}'}}</code>, <code>{{'{{'}}photos_link{{'}}'}}</code>
-                </div>
-            </div>
-
-            <!-- Action Buttons -->
-            <div class="button-group">
-                <button type="submit" class="btn-primary">💾 Save Settings</button>
-                <button type="button" class="btn-secondary" 
-                        onclick="document.getElementById('testEmailForm').submit()">
-                    📧 Send Test Email
-                </button>
-            </div>
+            <button type="submit" class="btn-primary">💾 Save Settings</button>
         </form>
 
-        <!-- Hidden test email form -->
-        <form id="testEmailForm" method="POST" action="{{ url_for('admin_test_email') }}" style="display: none;"></form>
-
-        <!-- Common SMTP Configurations -->
-        <div class="form-section" style="margin-top: 30px;">
-            <h2>📝 Common SMTP Configurations</h2>
-            
-            <table style="width: 100%; border-collapse: collapse;">
-                <thead>
-                    <tr style="background: #f0f0f0;">
-                        <th style="padding: 10px; text-align: left;">Provider</th>
-                        <th style="padding: 10px; text-align: left;">SMTP Server</th>
-                        <th style="padding: 10px; text-align: left;">Port</th>
-                        <th style="padding: 10px; text-align: left;">TLS</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td style="padding: 10px;">Gmail</td>
-                        <td style="padding: 10px;"><code>smtp.gmail.com</code></td>
-                        <td style="padding: 10px;">587</td>
-                        <td style="padding: 10px;">✓</td>
-                    </tr>
-                    <tr style="background: #f9f9f9;">
-                        <td style="padding: 10px;">Outlook/Office365</td>
-                        <td style="padding: 10px;"><code>smtp.office365.com</code></td>
-                        <td style="padding: 10px;">587</td>
-                        <td style="padding: 10px;">✓</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 10px;">Yahoo</td>
-                        <td style="padding: 10px;"><code>smtp.mail.yahoo.com</code></td>
-                        <td style="padding: 10px;">587</td>
-                        <td style="padding: 10px;">✓</td>
-                    </tr>
-                    <tr style="background: #f9f9f9;">
-                        <td style="padding: 10px;">SendGrid</td>
-                        <td style="padding: 10px;"><code>smtp.sendgrid.net</code></td>
-                        <td style="padding: 10px;">587</td>
-                        <td style="padding: 10px;">✓</td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="settings-card" style="margin-top: 30px;">
+            <h3>🔧 Quick Links</h3>
+            <div class="setting-item">
+                <div>
+                    <div class="setting-label">Manage Email Accounts</div>
+                    <div class="setting-description">Add, edit, test, and configure SMTP accounts</div>
+                </div>
+                <a href="{{ url_for('admin_email_accounts') }}" class="btn-primary" style="padding: 8px 16px; text-decoration: none; display: inline-block;">Go to Email Accounts</a>
+            </div>
+            <div class="setting-item">
+                <div>
+                    <div class="setting-label">View Registrations</div>
+                    <div class="setting-description">See all registrations and send photos</div>
+                </div>
+                <a href="{{ url_for('admin_dashboard') }}" class="btn-primary" style="padding: 8px 16px; text-decoration: none; display: inline-block;">Go to Dashboard</a>
+            </div>
         </div>
     </div>
 </body>

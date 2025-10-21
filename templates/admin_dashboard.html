@@ -208,6 +208,28 @@
             gap: 10px;
             align-items: flex-end;
         }
+        
+        .bulk-form label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+        
+        .bulk-form select {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            background: white;
+            font-size: 14px;
+            cursor: pointer;
+            min-width: 200px;
+        }
+        
+        .bulk-form select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
 
         .bulk-form input {
             flex: 1;
@@ -269,6 +291,9 @@
             <div class="status {% if stats.email_configured %}active{% else %}inactive{% endif %}">
                 {% if stats.email_configured %}
                     ✓ Configured
+                    {% if default_account %}
+                    <br><small style="font-size: 12px;">Default: {{ default_account.name }}</small>
+                    {% endif %}
                 {% else %}
                     ✗ Not Configured
                 {% endif %}
@@ -313,6 +338,16 @@
                     <td>
                         <div class="actions">
                             <form method="POST" action="{{ url_for('admin_send_photos', registration_id=reg.id) }}" style="display: inline;">
+                                <select name="account_id" style="padding: 6px; border: 1px solid #e0e0e0; border-radius: 4px; margin-right: 5px;">
+                                    {% if default_account %}
+                                    <option value="{{ default_account.id }}" selected>{{ default_account.name }} (Default)</option>
+                                    {% endif %}
+                                    {% for account in email_accounts %}
+                                        {% if not default_account or account.id != default_account.id %}
+                                        <option value="{{ account.id }}">{{ account.name }}</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                </select>
                                 <input type="text" name="photos_link" placeholder="Photos link (optional)" style="width: 200px; padding: 6px; border: 1px solid #e0e0e0; border-radius: 4px;">
                                 <button type="submit" class="btn btn-success">Send Photos</button>
                             </form>
@@ -327,6 +362,17 @@
             <h3>📤 Bulk Send Photos</h3>
             <p>Send photos email to all registrations that haven't received them yet.</p>
             <form method="POST" action="{{ url_for('admin_send_bulk_photos') }}" class="bulk-form">
+                <label for="bulk_account">Email Account:</label>
+                <select name="account_id" id="bulk_account" required>
+                    {% if default_account %}
+                    <option value="{{ default_account.id }}" selected>{{ default_account.name }} (Default)</option>
+                    {% endif %}
+                    {% for account in email_accounts %}
+                        {% if not default_account or account.id != default_account.id %}
+                        <option value="{{ account.id }}">{{ account.name }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
                 <input type="text" name="photos_link" placeholder="Photos link (e.g., Dropbox, Google Drive, etc.)" required>
                 <button type="submit">Send to All</button>
             </form>

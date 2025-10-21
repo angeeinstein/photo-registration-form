@@ -255,8 +255,11 @@ def admin_dashboard():
     """Admin dashboard"""
     registrations = Registration.query.order_by(Registration.registered_at.desc()).all()
     
-    # Get email settings
-    email_configured = create_email_sender_from_env() is not None
+    # Get email accounts
+    email_accounts = EmailAccount.query.filter_by(is_active=True).all()
+    default_account = EmailAccount.get_default()
+    email_configured = default_account is not None
+    
     send_confirmation = os.getenv('SEND_CONFIRMATION_EMAIL', 'true').lower() == 'true'
     
     stats = {
@@ -267,70 +270,28 @@ def admin_dashboard():
         'auto_confirmation': send_confirmation
     }
     
-    return render_template('admin_dashboard.html', registrations=registrations, stats=stats)
+    return render_template('admin_dashboard.html', 
+                         registrations=registrations, 
+                         stats=stats,
+                         email_accounts=email_accounts,
+                         default_account=default_account)
 
 @app.route('/admin/settings', methods=['GET', 'POST'])
 @login_required
 def admin_settings():
-    """Admin email settings configuration"""
+    """Admin settings configuration"""
     if request.method == 'POST':
-        # Update email settings
-        settings = {
-            'SMTP_SERVER': request.form.get('smtp_server'),
-            'SMTP_PORT': request.form.get('smtp_port'),
-            'SMTP_USERNAME': request.form.get('smtp_username'),
-            'SMTP_PASSWORD': request.form.get('smtp_password'),
-            'SMTP_USE_TLS': request.form.get('smtp_use_tls', 'false'),
-            'SMTP_FROM_EMAIL': request.form.get('smtp_from_email'),
-            'SMTP_FROM_NAME': request.form.get('smtp_from_name'),
-            'SEND_CONFIRMATION_EMAIL': request.form.get('send_confirmation', 'false'),
-            'CONFIRMATION_EMAIL_SUBJECT': request.form.get('confirmation_subject'),
-            'PHOTOS_EMAIL_SUBJECT': request.form.get('photos_subject'),
-        }
+        # Only update confirmation email setting
+        send_confirmation = request.form.get('send_confirmation', 'false')
+        AdminSettings.set_setting('SEND_CONFIRMATION_EMAIL', send_confirmation)
         
-        # Save to database (for runtime changes)
-        for key, value in settings.items():
-            AdminSettings.set_setting(key, value)
-        
-        # Note: For permanent changes, update .env file
-        flash('Settings saved! Note: Restart the service to apply changes from .env file.', 'success')
+        flash('Settings saved successfully!', 'success')
         return redirect(url_for('admin_settings'))
     
-    # Load current settings
-    current_settings = {
-        'smtp_server': AdminSettings.get_setting('SMTP_SERVER', os.getenv('SMTP_SERVER', '')),
-        'smtp_port': AdminSettings.get_setting('SMTP_PORT', os.getenv('SMTP_PORT', '587')),
-        'smtp_username': AdminSettings.get_setting('SMTP_USERNAME', os.getenv('SMTP_USERNAME', '')),
-        'smtp_from_email': AdminSettings.get_setting('SMTP_FROM_EMAIL', os.getenv('SMTP_FROM_EMAIL', '')),
-        'smtp_from_name': AdminSettings.get_setting('SMTP_FROM_NAME', os.getenv('SMTP_FROM_NAME', 'Photo Registration')),
-        'smtp_use_tls': AdminSettings.get_setting('SMTP_USE_TLS', os.getenv('SMTP_USE_TLS', 'true')),
-        'send_confirmation': AdminSettings.get_setting('SEND_CONFIRMATION_EMAIL', os.getenv('SEND_CONFIRMATION_EMAIL', 'true')),
-        'confirmation_subject': AdminSettings.get_setting('CONFIRMATION_EMAIL_SUBJECT', os.getenv('CONFIRMATION_EMAIL_SUBJECT', 'Registration Confirmation')),
-        'photos_subject': AdminSettings.get_setting('PHOTOS_EMAIL_SUBJECT', os.getenv('PHOTOS_EMAIL_SUBJECT', 'Your Event Photos')),
-    }
+    # Load current confirmation setting
+    send_confirmation = AdminSettings.get_setting('SEND_CONFIRMATION_EMAIL', os.getenv('SEND_CONFIRMATION_EMAIL', 'true'))
     
-    # Get available templates
-    templates_dir = os.path.join(os.path.dirname(__file__), 'email_templates')
-    templates = []
-    if os.path.exists(templates_dir):
-        templates = [f for f in os.listdir(templates_dir) if f.endswith('.html')]
-    
-    return render_template('admin_settings.html', settings=current_settings, templates=templates)
-
-@app.route('/admin/test-email', methods=['POST'])
-@login_required
-def admin_test_email():
-    """Test email configuration"""
-    try:
-        success = test_email_configuration()
-        if success:
-            flash('Test email sent successfully! Check your inbox.', 'success')
-        else:
-            flash('Failed to send test email. Check your SMTP configuration.', 'error')
-    except Exception as e:
-        flash(f'Error sending test email: {str(e)}', 'error')
-    
-    return redirect(url_for('admin_settings'))
+    return render_template('admin_settings.html', send_confirmation=send_confirmation)
 
 @app.route('/admin/send-photos/<int:registration_id>', methods=['POST'])
 @login_required
@@ -339,21 +300,29 @@ def admin_send_photos(registration_id):
     try:
         registration = Registration.query.get_or_404(registration_id)
         photos_link = request.form.get('photos_link', '')
+        account_id = request.form.get('account_id')
         
-        # Use default email account from database
-        default_account = EmailAccount.get_default()
+        # Get selected account or use default
+        if account_id:
+            account = EmailAccount.query.get(int(account_id))
+        else:
+            account = EmailAccount.get_default()
+        
+        if not account:
+            flash('No email account configured', 'error')
+            return redirect(url_for('admin_dashboard'))
         
         success = send_photos_email(
             registration.email,
             registration.first_name,
             photos_link=photos_link if photos_link else None,
-            account=default_account
+            account=account
         )
         
         if success:
             registration.photos_sent = True
             db.session.commit()
-            flash(f'Photos email sent to {registration.email}', 'success')
+            flash(f'Photos email sent to {registration.email} from "{account.name}"', 'success')
         else:
             flash(f'Failed to send email to {registration.email}', 'error')
     except Exception as e:
@@ -366,11 +335,19 @@ def admin_send_photos(registration_id):
 def admin_send_bulk_photos():
     """Send photos email to all registrations"""
     photos_link = request.form.get('photos_link', '')
+    account_id = request.form.get('account_id')
     sent_count = 0
     failed_count = 0
     
-    # Use default email account from database
-    default_account = EmailAccount.get_default()
+    # Get selected account or use default
+    if account_id:
+        account = EmailAccount.query.get(int(account_id))
+    else:
+        account = EmailAccount.get_default()
+    
+    if not account:
+        flash('No email account configured', 'error')
+        return redirect(url_for('admin_dashboard'))
     
     registrations = Registration.query.filter_by(photos_sent=False).all()
     
@@ -380,7 +357,7 @@ def admin_send_bulk_photos():
                 registration.email,
                 registration.first_name,
                 photos_link=photos_link if photos_link else None,
-                account=default_account
+                account=account
             )
             
             if success:
@@ -394,7 +371,7 @@ def admin_send_bulk_photos():
     
     db.session.commit()
     
-    flash(f'Bulk send complete: {sent_count} sent, {failed_count} failed', 'success')
+    flash(f'Bulk send complete using "{account.name}": {sent_count} sent, {failed_count} failed', 'success')
     return redirect(url_for('admin_dashboard'))
 
 # Email Account Management Routes
