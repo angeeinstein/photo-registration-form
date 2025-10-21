@@ -1098,13 +1098,38 @@ fresh_installation() {
     }
     deactivate
     
+    # Create instance directory for database
+    print_info "Creating instance directory for database..."
+    mkdir -p "${INSTALL_DIR}/instance"
+    
     # Initialize database
     print_info "Initializing database..."
     source "${VENV_DIR}/bin/activate"
-    $PYTHON_CMD -c "from app import init_db; init_db()" || {
-        print_warning "Database initialization may have failed, but continuing..."
+    cd "${INSTALL_DIR}"
+    $PYTHON_CMD -c "
+from app import app, db, init_db
+with app.app_context():
+    init_db()
+    print('Database initialized successfully!')
+" || {
+        print_error "Database initialization failed!"
+        print_info "Attempting alternative initialization method..."
+        $PYTHON_CMD << 'PYEOF'
+from app import app, db
+with app.app_context():
+    db.create_all()
+    print('Database tables created!')
+PYEOF
     }
     deactivate
+    
+    # Verify database was created
+    if [[ -f "${INSTALL_DIR}/instance/photo_registration.db" ]]; then
+        print_success "Database created: ${INSTALL_DIR}/instance/photo_registration.db"
+    else
+        print_warning "Database file not found in expected location"
+        print_info "It will be created on first run"
+    fi
     
     # Create log directory
     print_info "Creating log directory: $LOG_DIR"
@@ -1205,6 +1230,19 @@ fresh_installation() {
     # Check service status
     if systemctl is-active --quiet ${SERVICE_NAME}; then
         print_success "Service is running!"
+        
+        # Verify database was created during startup
+        sleep 1
+        if [[ -f "${INSTALL_DIR}/instance/photo_registration.db" ]]; then
+            print_success "Database verified: ${INSTALL_DIR}/instance/photo_registration.db"
+            
+            # Show database info
+            DB_SIZE=$(du -h "${INSTALL_DIR}/instance/photo_registration.db" | cut -f1)
+            print_info "Database size: $DB_SIZE"
+        else
+            print_warning "Database file not found! Application may not work correctly."
+            print_info "The service will create it on first request."
+        fi
     else
         print_error "Service failed to start. Checking logs..."
         journalctl -u ${SERVICE_NAME} -n 50 --no-pager
