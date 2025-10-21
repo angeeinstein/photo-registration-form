@@ -222,6 +222,28 @@ def health():
     """Health check endpoint"""
     return jsonify({'status': 'healthy', 'timestamp': datetime.utcnow().isoformat()})
 
+@app.route('/api/registrations/updates', methods=['GET'])
+@login_required
+def get_registration_updates():
+    """API endpoint for live dashboard updates"""
+    try:
+        registrations = Registration.query.order_by(Registration.registered_at.desc()).all()
+        
+        stats = {
+            'total_registrations': len(registrations),
+            'confirmation_sent': sum(1 for r in registrations if r.confirmation_sent),
+            'photos_sent': sum(1 for r in registrations if r.photos_sent),
+        }
+        
+        return jsonify({
+            'success': True,
+            'stats': stats,
+            'registrations': [reg.to_dict() for reg in registrations]
+        })
+    except Exception as e:
+        app.logger.error(f'Error fetching updates: {str(e)}')
+        return jsonify({'error': 'Failed to fetch updates'}), 500
+
 # Admin Routes
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():

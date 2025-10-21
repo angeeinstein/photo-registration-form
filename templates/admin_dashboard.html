@@ -251,9 +251,48 @@
         .bulk-form button:hover {
             background: #764ba2;
         }
+
+        .live-indicator {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            z-index: 1000;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #28a745;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.4;
+            }
+        }
     </style>
 </head>
 <body>
+    <!-- Live Update Indicator -->
+    <div class="live-indicator">
+        <div class="live-dot"></div>
+        <span>Live Updates Active</span>
+    </div>
+
     <div class="header">
         <h1>📊 Admin Dashboard</h1>
         <div class="nav-links">
@@ -378,5 +417,211 @@
             </form>
         </div>
     </div>
+
+    <script>
+        // Live updates for admin dashboard
+        let lastUpdateTime = new Date();
+        let isUpdating = false;
+
+        // Function to format date/time
+        function formatDateTime(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleString();
+        }
+
+        // Function to update stats
+        function updateStats(stats) {
+            const totalEl = document.querySelector('.stat-card:nth-child(1) .value');
+            const confirmEl = document.querySelector('.stat-card:nth-child(2) .value');
+            const photosEl = document.querySelector('.stat-card:nth-child(3) .value');
+            
+            if (totalEl) totalEl.textContent = stats.total_registrations;
+            if (confirmEl) confirmEl.textContent = stats.confirmation_sent;
+            if (photosEl) photosEl.textContent = stats.photos_sent;
+        }
+
+        // Function to create a table row
+        function createTableRow(reg) {
+            const row = document.createElement('tr');
+            row.setAttribute('data-id', reg.id);
+            row.classList.add('new-entry');
+            
+            const confirmBadge = reg.confirmation_sent 
+                ? '<span class="badge sent">✓ Confirmed</span>' 
+                : '<span class="badge pending">⏳ Pending</span>';
+            
+            const photosBadge = reg.photos_sent 
+                ? '<span class="badge sent">📷 Photos Sent</span>' 
+                : '';
+            
+            row.innerHTML = `
+                <td>${reg.id}</td>
+                <td>${reg.first_name}</td>
+                <td>${reg.last_name}</td>
+                <td>${reg.email}</td>
+                <td>${formatDateTime(reg.registered_at)}</td>
+                <td>
+                    ${confirmBadge}
+                    ${photosBadge}
+                </td>
+                <td>
+                    <div class="actions">
+                        <form method="POST" action="/admin/send-photos/${reg.id}" style="display: inline;">
+                            <select name="account_id" style="padding: 6px; border: 1px solid #e0e0e0; border-radius: 4px; margin-right: 5px;">
+                                {% if default_account %}
+                                <option value="{{ default_account.id }}" selected>{{ default_account.name }} (Default)</option>
+                                {% endif %}
+                                {% for account in email_accounts %}
+                                    {% if not default_account or account.id != default_account.id %}
+                                    <option value="{{ account.id }}">{{ account.name }}</option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                            <input type="text" name="photos_link" placeholder="Photos link (optional)" style="width: 200px; padding: 6px; border: 1px solid #e0e0e0; border-radius: 4px;">
+                            <button type="submit" class="btn btn-success">Send Photos</button>
+                        </form>
+                    </div>
+                </td>
+            `;
+            
+            // Add flash animation
+            setTimeout(() => row.classList.remove('new-entry'), 2000);
+            
+            return row;
+        }
+
+        // Function to update the table
+        function updateTable(registrations) {
+            const tbody = document.querySelector('table tbody');
+            if (!tbody) return;
+            
+            const existingIds = new Set(
+                Array.from(tbody.querySelectorAll('tr')).map(row => row.getAttribute('data-id'))
+            );
+            
+            // Add new registrations
+            registrations.forEach(reg => {
+                if (!existingIds.has(String(reg.id))) {
+                    const row = createTableRow(reg);
+                    tbody.insertBefore(row, tbody.firstChild);
+                    
+                    // Show notification
+                    showNotification(`New registration: ${reg.first_name} ${reg.last_name}`);
+                }
+            });
+        }
+
+        // Function to show notification
+        function showNotification(message) {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #28a745;
+                color: white;
+                padding: 15px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 10000;
+                animation: slideIn 0.3s ease-out;
+            `;
+            notification.innerHTML = `
+                <strong>🔔 New Registration!</strong><br>
+                ${message}
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease-out';
+                setTimeout(() => notification.remove(), 300);
+            }, 5000);
+        }
+
+        // Function to fetch updates
+        async function fetchUpdates() {
+            if (isUpdating) return;
+            
+            isUpdating = true;
+            
+            try {
+                const response = await fetch('/api/registrations/updates');
+                if (!response.ok) throw new Error('Failed to fetch updates');
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateStats(data.stats);
+                    updateTable(data.registrations);
+                    lastUpdateTime = new Date();
+                }
+            } catch (error) {
+                console.error('Error fetching updates:', error);
+            } finally {
+                isUpdating = false;
+            }
+        }
+
+        // Start polling for updates every 5 seconds
+        setInterval(fetchUpdates, 5000);
+
+        // Add CSS animations
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from {
+                    transform: translateX(400px);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+            
+            @keyframes slideOut {
+                from {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateX(400px);
+                    opacity: 0;
+                }
+            }
+            
+            .new-entry {
+                animation: highlightNew 2s ease-out;
+            }
+            
+            @keyframes highlightNew {
+                0% {
+                    background-color: #d4edda;
+                }
+                100% {
+                    background-color: transparent;
+                }
+            }
+            
+            tr[data-id] {
+                transition: background-color 0.3s ease;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Add data-id attribute to existing rows for tracking
+        document.addEventListener('DOMContentLoaded', function() {
+            const rows = document.querySelectorAll('table tbody tr');
+            rows.forEach((row, index) => {
+                const firstCell = row.querySelector('td');
+                if (firstCell) {
+                    row.setAttribute('data-id', firstCell.textContent);
+                }
+            });
+        });
+    </script>
 </body>
 </html>

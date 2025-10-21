@@ -179,8 +179,16 @@ show_main_menu() {
     if check_existing_installation; then
         print_header "Photo Registration Form - Management Menu"
         print_info "Installation detected at: $INSTALL_DIR"
+        
+        # Check if git repo
+        if [[ -d "${INSTALL_DIR}/.git" ]]; then
+            print_success "Git repository detected - updates available"
+        else
+            print_warning "Not a git repository - only dependency updates available"
+        fi
+        
         echo ""
-        print_menu "1) Update installation (git pull + restart service)"
+        print_menu "1) Update installation (dependencies + restart)"
         print_menu "2) Reinstall (keep database and .env)"
         print_menu "3) Configure settings (hostname, nginx, etc.)"
         print_menu "4) Complete removal (uninstall everything)"
@@ -265,14 +273,34 @@ update_installation() {
         cp .env .env.backup
     fi
     
-    # Pull updates
-    sudo -u $SYSTEM_USER git pull || {
-        print_error "Git pull failed. Check your repository."
-        if [[ -f ".env.backup" ]]; then
-            mv .env.backup .env
+    # Check if this is a git repository
+    if [[ -d ".git" ]]; then
+        print_info "Git repository detected, pulling updates..."
+        sudo -u $SYSTEM_USER git pull || {
+            print_error "Git pull failed. Check your repository."
+            if [[ -f ".env.backup" ]]; then
+                mv .env.backup .env
+            fi
+            exit 1
+        }
+    else
+        print_warning "Not a git repository. Skipping git pull."
+        print_info "To enable git updates, install from git repository:"
+        print_info "  1. Backup your .env and database"
+        print_info "  2. Remove current installation: sudo rm -rf ${INSTALL_DIR}"
+        print_info "  3. Clone from git: sudo git clone <your-repo-url> ${INSTALL_DIR}"
+        print_info "  4. Restore .env and database"
+        print_info "  5. Run install.sh again"
+        echo ""
+        read -p "Continue with dependency updates only? (y/n): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            if [[ -f ".env.backup" ]]; then
+                rm .env.backup
+            fi
+            exit 0
         fi
-        exit 1
-    }
+    fi
     
     # Restore .env
     if [[ -f ".env.backup" ]]; then
