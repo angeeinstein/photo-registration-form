@@ -75,30 +75,30 @@
             <div class="camera-icon">📷</div>
             <h1>Your Event Photos Are Ready!</h1>
             
-            <p>Dear {{first_name}},</p>
+            <p>Dear {{ first_name }},</p>
             
             <p>Thank you for visiting our photo booth at the fair! We hope you had a wonderful time.</p>
             
             <p>Your photos are now ready and available for download.</p>
             
-            {{#if has_link}}
+            {% if has_link %}
             <div class="highlight">
                 <p><strong>Access Your Photos:</strong></p>
                 <p>Click the button below to view and download your photos:</p>
-                <a href="{{photos_link}}" class="button">View My Photos</a>
+                <a href="{{ photos_link }}" class="button">View My Photos</a>
                 <p style="margin-top: 15px; font-size: 14px; color: #666;">
                     Or copy this link: <br>
-                    <code style="background: #f5f5f5; padding: 5px; border-radius: 3px; display: inline-block; margin-top: 5px;">{{photos_link}}</code>
+                    <code style="background: #f5f5f5; padding: 5px; border-radius: 3px; display: inline-block; margin-top: 5px;">{{ photos_link }}</code>
                 </p>
             </div>
-            {{/if}}
+            {% endif %}
             
-            {{#if has_attachments}}
+            {% if has_attachments %}
             <div class="info-box">
                 <p><strong>📎 Your photos are attached to this email!</strong></p>
                 <p>You can download them directly from the attachments.</p>
             </div>
-            {{/if}}
+            {% endif %}
             
             <p><strong>Important Information:</strong></p>
             <ul>

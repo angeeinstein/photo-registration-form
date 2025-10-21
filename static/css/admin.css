@@ -227,6 +227,15 @@ tr:hover {
     background: #45a049;
 }
 
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
+}
+
 .btn-danger {
     background: #dc3545;
     color: white;

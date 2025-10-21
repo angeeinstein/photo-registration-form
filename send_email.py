@@ -373,8 +373,8 @@ def send_photos_email(to_email: str,
     variables = {
         'first_name': first_name,
         'photos_link': photos_link or '#',
-        'has_link': 'true' if photos_link else 'false',
-        'has_attachments': 'true' if photo_files else 'false'
+        'has_link': bool(photos_link),
+        'has_attachments': bool(photo_files)
     }
     
     # Get subject from environment or use default

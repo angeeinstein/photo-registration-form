@@ -237,6 +237,30 @@ body {
     font-size: 13px;
 }
 
+.test-email-form {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.test-email-input {
+    padding: 8px 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 13px;
+    min-width: 200px;
+    transition: border-color 0.3s;
+}
+
+.test-email-input:focus {
+    outline: none;
+    border-color: #17a2b8;
+}
+
+.test-email-input::placeholder {
+    color: #999;
+}
+
 .empty-state {
     text-align: center;
     padding: 60px 20px;
