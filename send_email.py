@@ -14,6 +14,7 @@ from email import encoders
 from pathlib import Path
 from typing import Optional, List, Dict
 import logging
+from jinja2 import Template
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -172,13 +173,13 @@ class EmailSender:
                            variables: Dict[str, str],
                            attachments: Optional[List[str]] = None) -> bool:
         """
-        Send an email using an HTML template
+        Send an email using an HTML template with Jinja2 rendering
         
         Args:
             to_email: Recipient email address
             template_path: Path to HTML template file
             subject: Email subject
-            variables: Dictionary of variables to replace in template
+            variables: Dictionary of variables to pass to template
             attachments: List of file paths to attach
             
         Returns:
@@ -187,12 +188,11 @@ class EmailSender:
         try:
             # Read template
             with open(template_path, 'r', encoding='utf-8') as f:
-                html_body = f.read()
+                template_content = f.read()
             
-            # Replace variables in template
-            for key, value in variables.items():
-                placeholder = f"{{{{{key}}}}}"  # {{variable_name}}
-                html_body = html_body.replace(placeholder, str(value))
+            # Render template with Jinja2
+            template = Template(template_content)
+            html_body = template.render(**variables)
             
             # Send email
             return self.send_email(
