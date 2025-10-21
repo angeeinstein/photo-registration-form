@@ -265,36 +265,45 @@ update_installation() {
     
     # Update from git
     print_info "Pulling latest changes from git..."
-    cd "$INSTALL_DIR"
     
-    # Stash local changes to .env if exists
+    # Get the directory where the script is running from (source directory)
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    
+    # Preserve .env from install directory
+    cd "$INSTALL_DIR"
     if [[ -f ".env" ]]; then
         print_info "Preserving .env file..."
         cp .env .env.backup
     fi
     
-    # Check if this is a git repository
+    # Check if the SCRIPT directory (where we're running from) is a git repository
+    cd "$SCRIPT_DIR"
     if [[ -d ".git" ]]; then
-        print_info "Git repository detected, pulling updates..."
-        sudo -u $SYSTEM_USER git pull || {
+        print_info "Git repository detected at source directory, pulling updates..."
+        git pull || {
             print_error "Git pull failed. Check your repository."
+            cd "$INSTALL_DIR"
             if [[ -f ".env.backup" ]]; then
                 mv .env.backup .env
             fi
             exit 1
         }
+        
+        # Copy updated files to install directory (excluding .git, db, venv)
+        print_info "Copying updated files to installation directory..."
+        rsync -av --exclude='.git' --exclude='*.db' --exclude='venv' --exclude='__pycache__' "$SCRIPT_DIR/" "$INSTALL_DIR/" || {
+            cp -r "$SCRIPT_DIR"/* "$INSTALL_DIR/" 2>/dev/null || true
+        }
     else
-        print_warning "Not a git repository. Skipping git pull."
-        print_info "To enable git updates, install from git repository:"
-        print_info "  1. Backup your .env and database"
-        print_info "  2. Remove current installation: sudo rm -rf ${INSTALL_DIR}"
-        print_info "  3. Clone from git: sudo git clone <your-repo-url> ${INSTALL_DIR}"
-        print_info "  4. Restore .env and database"
-        print_info "  5. Run install.sh again"
+        print_warning "Not running from a git repository. Skipping git pull."
+        print_info "To enable git updates:"
+        print_info "  1. Clone the repository: git clone <your-repo-url> ~/photo-registration-form"
+        print_info "  2. Run updates from there: cd ~/photo-registration-form && sudo ./install.sh"
         echo ""
         read -p "Continue with dependency updates only? (y/n): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            cd "$INSTALL_DIR"
             if [[ -f ".env.backup" ]]; then
                 rm .env.backup
             fi
@@ -303,6 +312,7 @@ update_installation() {
     fi
     
     # Restore .env
+    cd "$INSTALL_DIR"
     if [[ -f ".env.backup" ]]; then
         mv .env.backup .env
         print_success ".env file restored"
