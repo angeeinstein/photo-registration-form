@@ -27,14 +27,14 @@ try:
             print("✅ Database initialized successfully!")
             
             # Verify database exists
-            db_path = 'instance/photo_registration.db'
+            db_path = 'registrations.db'
             if os.path.exists(db_path):
                 size = os.path.getsize(db_path)
                 print(f"✅ Database file exists: {db_path}")
                 print(f"   Size: {size} bytes")
             else:
                 print(f"⚠️  Warning: Database file not found at {db_path}")
-                print("   It may be created on first request")
+                print("   It will be created on first request")
             
             print("=" * 60)
             sys.exit(0)
