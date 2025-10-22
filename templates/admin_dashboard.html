@@ -481,28 +481,46 @@
             // Show modal and loading state
             modal.style.display = 'flex';
             qrLoading.style.display = 'block';
+            qrLoading.innerHTML = '<div class="spinner" style="margin: 0 auto;"></div><p style="margin-top: 1rem; color: #666;">Generating QR code...</p>';
             qrImage.style.display = 'none';
             qrName.textContent = `${firstName} ${lastName}`;
             
             try {
                 // Fetch QR code from server
+                console.log(`Fetching QR code for registration ${registrationId}`);
                 const response = await fetch(`/admin/registration/${registrationId}/qr-code`);
+                
+                console.log(`Response status: ${response.status}`);
+                
                 if (!response.ok) {
-                    throw new Error('Failed to generate QR code');
+                    const errorText = await response.text();
+                    console.error('Server error:', errorText);
+                    throw new Error(`Server returned ${response.status}: ${errorText}`);
                 }
                 
                 const blob = await response.blob();
+                console.log(`Received blob of size: ${blob.size} bytes, type: ${blob.type}`);
+                
+                if (blob.size === 0) {
+                    throw new Error('Received empty image data');
+                }
+                
                 const imageUrl = URL.createObjectURL(blob);
                 
                 // Display QR code
                 qrImage.src = imageUrl;
                 qrImage.onload = () => {
+                    console.log('QR code image loaded successfully');
                     qrLoading.style.display = 'none';
                     qrImage.style.display = 'block';
                 };
+                qrImage.onerror = () => {
+                    console.error('Failed to load QR code image');
+                    qrLoading.innerHTML = '<p style="color: #dc3545;">Failed to display QR code image.</p>';
+                };
             } catch (error) {
                 console.error('Error loading QR code:', error);
-                qrLoading.innerHTML = '<p style="color: #dc3545;">Failed to load QR code. Please try again.</p>';
+                qrLoading.innerHTML = `<p style="color: #dc3545;">Failed to load QR code.<br><small>${error.message}</small></p>`;
             }
         }
 

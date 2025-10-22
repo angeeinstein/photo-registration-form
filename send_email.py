@@ -68,6 +68,7 @@ class EmailSender:
                    html_body: str,
                    text_body: Optional[str] = None,
                    attachments: Optional[List[str]] = None,
+                   inline_images: Optional[Dict[str, bytes]] = None,
                    cc: Optional[List[str]] = None,
                    bcc: Optional[List[str]] = None) -> bool:
         """
@@ -79,6 +80,7 @@ class EmailSender:
             html_body: HTML email body
             text_body: Plain text email body (fallback)
             attachments: List of file paths to attach
+            inline_images: Dict of {cid: image_bytes} for inline embedding
             cc: List of CC email addresses
             bcc: List of BCC email addresses
             
@@ -86,8 +88,15 @@ class EmailSender:
             bool: True if email sent successfully, False otherwise
         """
         try:
-            # Create message
-            message = MIMEMultipart('alternative')
+            # Create message with related for inline images
+            if inline_images:
+                message = MIMEMultipart('related')
+                message_alt = MIMEMultipart('alternative')
+                message.attach(message_alt)
+            else:
+                message = MIMEMultipart('alternative')
+                message_alt = message
+            
             message['Subject'] = subject
             message['From'] = f"{self.from_name} <{self.from_email}>"
             message['To'] = to_email
@@ -100,11 +109,19 @@ class EmailSender:
             # Add plain text version (fallback)
             if text_body:
                 text_part = MIMEText(text_body, 'plain')
-                message.attach(text_part)
+                message_alt.attach(text_part)
             
             # Add HTML version
             html_part = MIMEText(html_body, 'html')
-            message.attach(html_part)
+            message_alt.attach(html_part)
+            
+            # Add inline images with CID
+            if inline_images:
+                for cid, image_bytes in inline_images.items():
+                    img = MIMEImage(image_bytes)
+                    img.add_header('Content-ID', f'<{cid}>')
+                    img.add_header('Content-Disposition', 'inline')
+                    message.attach(img)
             
             # Add attachments
             if attachments:
@@ -178,7 +195,8 @@ class EmailSender:
                            template_path: str,
                            subject: str,
                            variables: Dict[str, str],
-                           attachments: Optional[List[str]] = None) -> bool:
+                           attachments: Optional[List[str]] = None,
+                           inline_images: Optional[Dict[str, bytes]] = None) -> bool:
         """
         Send an email using an HTML template with Jinja2 rendering
         
@@ -188,6 +206,7 @@ class EmailSender:
             subject: Email subject
             variables: Dictionary of variables to pass to template
             attachments: List of file paths to attach
+            inline_images: Dict of {cid: image_bytes} for inline embedding
             
         Returns:
             bool: True if email sent successfully, False otherwise
@@ -217,7 +236,8 @@ class EmailSender:
                 to_email=to_email,
                 subject=subject,
                 html_body=html_body,
-                attachments=attachments
+                attachments=attachments,
+                inline_images=inline_images
             )
             
         except Exception as e:
@@ -345,23 +365,36 @@ def send_confirmation_email(to_email: str, first_name: str, last_name: str, regi
         'email': to_email
     }
     
+    inline_images = None
+    
     # Generate QR code if registration_id and qr_token are provided
     if registration_id and qr_token:
         try:
-            from qr_generator import generate_qr_code_inline
+            from qr_generator import generate_qr_code
             logger.info(f"Generating QR code for registration {registration_id}")
-            qr_code_data_uri = generate_qr_code_inline(
-                first_name=first_name,
-                last_name=last_name,
-                email=to_email,
-                registration_id=registration_id,
-                qr_token=qr_token,
-                size=300
-            )
-            variables['qr_code_data_uri'] = qr_code_data_uri
-            logger.info(f"QR code generated successfully for registration {registration_id}")
-            logger.debug(f"QR code data URI length: {len(qr_code_data_uri)} characters")
-            logger.debug(f"QR code data URI starts with: {qr_code_data_uri[:50]}...")
+            
+            # Generate QR code as bytes for CID attachment
+            person_data = {
+                'first_name': first_name,
+                'last_name': last_name,
+                'email': to_email,
+                'registration_id': registration_id,
+                'qr_token': qr_token
+            }
+            
+            qr_bytes = generate_qr_code(person_data, output_format='bytes', size=300)
+            
+            if qr_bytes:
+                # Use CID (Content-ID) for inline image embedding
+                # This is more reliable than data URIs for email clients
+                inline_images = {'qrcode': qr_bytes}
+                variables['qr_code_cid'] = 'cid:qrcode'
+                variables['qr_code_data_uri'] = 'cid:qrcode'  # For backward compatibility with template
+                logger.info(f"QR code generated successfully for registration {registration_id}, size: {len(qr_bytes)} bytes")
+            else:
+                logger.error("QR code generation returned empty bytes")
+                variables['qr_code_data_uri'] = None
+                
         except ImportError as e:
             logger.error(f"Failed to import qr_generator: {e}")
             logger.error("Make sure qrcode[pil] package is installed: pip install 'qrcode[pil]'")
@@ -383,7 +416,8 @@ def send_confirmation_email(to_email: str, first_name: str, last_name: str, regi
         to_email=to_email,
         template_path=template_path,
         subject=subject,
-        variables=variables
+        variables=variables,
+        inline_images=inline_images
     )
 
 

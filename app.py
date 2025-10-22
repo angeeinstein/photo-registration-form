@@ -596,6 +596,7 @@ def admin_dashboard():
 
 @app.route('/admin/registration/<int:registration_id>/qr-code')
 @login_required
+@csrf.exempt  # Exempt from CSRF for GET request
 def get_registration_qr_code(registration_id):
     """Generate and return QR code image for a specific registration"""
     from io import BytesIO
