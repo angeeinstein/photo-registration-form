@@ -356,7 +356,7 @@ update_installation() {
     # Check if migration is needed
     if [[ -f "migrate_photo_workflow.py" ]]; then
         print_info "Photo workflow migration script found, checking if migration needed..."
-        $PYTHON_CMD migrate_photo_workflow.py || {
+        "${VENV_DIR}/bin/python3" migrate_photo_workflow.py || {
             print_warning "Migration script execution completed with warnings (this may be normal if already migrated)"
         }
     else

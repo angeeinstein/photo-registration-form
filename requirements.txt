@@ -8,11 +8,11 @@ email-validator==2.1.0
 
 # QR Code generation
 qrcode[pil]==7.4.2
-Pillow==10.1.0
+Pillow>=10.0.0
 
 # Photo processing and QR code detection
-opencv-python==4.8.1.78
-pyzbar==0.1.9
+opencv-python>=4.8.0
+pyzbar>=0.1.9
 
 # Google Drive API (to be used later)
 # google-api-python-client==2.108.0
