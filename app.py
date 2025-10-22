@@ -608,18 +608,27 @@ def get_registration_qr_code(registration_id):
         # Import QR generator
         try:
             from qr_generator import generate_qr_code
-        except ImportError:
-            app.logger.error("QR generator module not found")
+        except ImportError as e:
+            app.logger.error(f"QR generator module not found: {str(e)}")
             return jsonify({'error': 'QR generation not available'}), 500
+        
+        # Generate qr_token if not exists
+        if not registration.qr_token:
+            import uuid
+            registration.qr_token = str(uuid.uuid4())
+            db.session.commit()
+            app.logger.info(f"Generated new QR token for registration {registration_id}")
         
         # Prepare person data
         person_data = {
             'first_name': registration.first_name,
             'last_name': registration.last_name,
             'email': registration.email,
-            'phone': registration.phone or '',
-            'registration_id': registration.id
+            'registration_id': registration.id,
+            'qr_token': registration.qr_token
         }
+        
+        app.logger.info(f"Generating QR code for registration {registration_id}: {registration.first_name} {registration.last_name}")
         
         # Generate QR code as PNG bytes
         qr_bytes = generate_qr_code(person_data, output_format='bytes')
@@ -627,6 +636,8 @@ def get_registration_qr_code(registration_id):
         if not qr_bytes:
             app.logger.error(f"Failed to generate QR code for registration {registration_id}")
             return jsonify({'error': 'Failed to generate QR code'}), 500
+        
+        app.logger.info(f"QR code generated successfully for registration {registration_id}, size: {len(qr_bytes)} bytes")
         
         # Return as image
         return send_file(
@@ -637,8 +648,8 @@ def get_registration_qr_code(registration_id):
         )
         
     except Exception as e:
-        app.logger.error(f"Error generating QR code for registration {registration_id}: {str(e)}")
-        return jsonify({'error': 'Failed to generate QR code'}), 500
+        app.logger.error(f"Error generating QR code for registration {registration_id}: {str(e)}", exc_info=True)
+        return jsonify({'error': f'Failed to generate QR code: {str(e)}'}), 500
 
 @app.route('/admin/settings', methods=['GET', 'POST'])
 @login_required
