@@ -231,3 +231,124 @@ class DriveCredentialsManager:
         if temp_file.exists():
             temp_file.unlink()
             logger.debug("Cleaned up temporary credentials file")
+    
+    @staticmethod
+    def get_oauth_credentials(user_identifier='admin'):
+        """
+        Get OAuth credentials from database
+        
+        Args:
+            user_identifier: User identifier (default: 'admin')
+            
+        Returns:
+            tuple: (access_token, refresh_token, token_expiry) or (None, None, None)
+        """
+        try:
+            # Import here to avoid circular import
+            from app import DriveOAuthToken, db
+            from datetime import datetime
+            
+            token = DriveOAuthToken.query.filter_by(user_identifier=user_identifier).first()
+            
+            if not token:
+                logger.warning(f"No OAuth token found for {user_identifier}")
+                return None, None, None
+            
+            return token.access_token, token.refresh_token, token.token_expiry
+            
+        except Exception as e:
+            logger.error(f"Failed to get OAuth credentials: {str(e)}")
+            return None, None, None
+    
+    @staticmethod
+    def refresh_oauth_token(user_identifier='admin'):
+        """
+        Refresh expired OAuth access token
+        
+        Args:
+            user_identifier: User identifier (default: 'admin')
+            
+        Returns:
+            str: New access token or None
+        """
+        try:
+            import requests
+            from app import DriveOAuthToken, db
+            from datetime import datetime, timedelta
+            
+            token = DriveOAuthToken.query.filter_by(user_identifier=user_identifier).first()
+            
+            if not token:
+                logger.error(f"No OAuth token found for {user_identifier}")
+                return None
+            
+            # Check if token needs refresh
+            if not token.is_expired():
+                logger.debug("Token is still valid, no refresh needed")
+                return token.access_token
+            
+            # Get OAuth client credentials
+            client_id = os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
+            client_secret = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET')
+            
+            if not client_id or not client_secret:
+                logger.error("OAuth credentials not configured in environment")
+                return None
+            
+            # Refresh the access token
+            token_url = 'https://oauth2.googleapis.com/token'
+            token_data = {
+                'client_id': client_id,
+                'client_secret': client_secret,
+                'refresh_token': token.refresh_token,
+                'grant_type': 'refresh_token'
+            }
+            
+            logger.info(f"Refreshing OAuth token for {user_identifier}...")
+            response = requests.post(token_url, data=token_data)
+            
+            if response.status_code != 200:
+                logger.error(f'Token refresh failed: {response.text}')
+                return None
+            
+            token_response = response.json()
+            access_token = token_response.get('access_token')
+            expires_in = token_response.get('expires_in', 3600)
+            
+            # Update token in database
+            token.access_token = access_token
+            token.token_expiry = datetime.utcnow() + timedelta(seconds=expires_in)
+            token.updated_at = datetime.utcnow()
+            db.session.commit()
+            
+            logger.info('OAuth token refreshed successfully')
+            return access_token
+            
+        except Exception as e:
+            logger.error(f'Error refreshing OAuth token: {str(e)}')
+            try:
+                db.session.rollback()
+            except:
+                pass
+            return None
+    
+    @staticmethod
+    def is_oauth_configured(user_identifier='admin'):
+        """
+        Check if OAuth is configured for user
+        
+        Args:
+            user_identifier: User identifier (default: 'admin')
+            
+        Returns:
+            bool: True if OAuth is configured
+        """
+        try:
+            from app import DriveOAuthToken
+            
+            token = DriveOAuthToken.query.filter_by(user_identifier=user_identifier).first()
+            return token is not None
+            
+        except Exception as e:
+            logger.error(f"Error checking OAuth configuration: {str(e)}")
+            return False

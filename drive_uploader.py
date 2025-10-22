@@ -26,32 +26,83 @@ class DriveUploader:
     - Create person folders
     - Upload photos
     - Generate shareable links
+    
+    Supports both OAuth 2.0 (preferred) and service account authentication
     """
     
     # Use full Drive scope to access shared folders
     SCOPES = ['https://www.googleapis.com/auth/drive']
+    OAUTH_SCOPE = 'https://www.googleapis.com/auth/drive.file'
     
-    def __init__(self):
+    def __init__(self, use_oauth=True, user_identifier='admin'):
+        """
+        Initialize Drive uploader
+        
+        Args:
+            use_oauth: Use OAuth 2.0 if True, service account if False
+            user_identifier: OAuth user identifier (default: 'admin')
+        """
+        self.use_oauth = use_oauth
+        self.user_identifier = user_identifier
         self.drive_manager = DriveCredentialsManager()
         
-        if not self.drive_manager.is_configured():
-            raise ValueError("Google Drive is not configured. Please upload credentials first.")
+        # Check if either OAuth or service account is configured
+        if use_oauth:
+            if not self.drive_manager.is_oauth_configured(user_identifier):
+                raise ValueError("Google Drive OAuth is not configured. Please connect your Google account.")
+        else:
+            if not self.drive_manager.is_configured():
+                raise ValueError("Google Drive is not configured. Please upload credentials first.")
         
-        self.config = self.drive_manager.get_config()
+        self.config = self.drive_manager.get_config() if not use_oauth else {}
         self.service = None
         self.creds_path = None
         
     def __enter__(self):
         """Context manager entry - setup credentials"""
         try:
-            # Get temporary credentials file
-            self.creds_path = self.drive_manager.get_credentials_path()
-            
-            # Create credentials
-            credentials = service_account.Credentials.from_service_account_file(
-                self.creds_path,
-                scopes=self.SCOPES
-            )
+            if self.use_oauth:
+                # Use OAuth 2.0 credentials
+                from google.oauth2.credentials import Credentials
+                
+                access_token, refresh_token, token_expiry = self.drive_manager.get_oauth_credentials(self.user_identifier)
+                
+                if not access_token or not refresh_token:
+                    raise ValueError("OAuth tokens not found")
+                
+                # Check if token needs refresh
+                from datetime import datetime
+                if datetime.utcnow() >= token_expiry:
+                    logger.info("Access token expired, refreshing...")
+                    access_token = self.drive_manager.refresh_oauth_token(self.user_identifier)
+                    if not access_token:
+                        raise ValueError("Failed to refresh OAuth token")
+                
+                # Get OAuth client credentials
+                client_id = os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
+                client_secret = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET')
+                
+                # Create OAuth credentials
+                credentials = Credentials(
+                    token=access_token,
+                    refresh_token=refresh_token,
+                    token_uri='https://oauth2.googleapis.com/token',
+                    client_id=client_id,
+                    client_secret=client_secret,
+                    scopes=[self.OAUTH_SCOPE]
+                )
+                
+                logger.info("Using OAuth 2.0 credentials for Drive access")
+            else:
+                # Use service account credentials
+                self.creds_path = self.drive_manager.get_credentials_path()
+                
+                credentials = service_account.Credentials.from_service_account_file(
+                    self.creds_path,
+                    scopes=self.SCOPES
+                )
+                
+                logger.info("Using service account credentials for Drive access")
             
             # Build Drive service
             self.service = build('drive', 'v3', credentials=credentials)

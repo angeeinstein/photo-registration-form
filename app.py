@@ -197,9 +197,38 @@ class ProcessingLog(db.Model):
             'timestamp': self.timestamp.isoformat(),
             'action': self.action,
             'message': self.message,
-            'level': self.level,
-            'registration_id': self.registration_id,
-            'photo_id': self.photo_id
+            'level': self.level
+        }
+
+# DriveOAuthToken Model - Stores OAuth 2.0 tokens for Google Drive access
+class DriveOAuthToken(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_identifier = db.Column(db.String(100), unique=True, nullable=False)  # 'admin' or user ID
+    access_token = db.Column(db.Text, nullable=False)  # OAuth access token
+    refresh_token = db.Column(db.Text, nullable=False)  # OAuth refresh token (for long-term access)
+    token_expiry = db.Column(db.DateTime, nullable=False)  # When access token expires
+    scope = db.Column(db.Text, nullable=True)  # OAuth scopes granted
+    email = db.Column(db.String(200), nullable=True)  # Google account email
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f'<DriveOAuthToken {self.user_identifier} - {self.email}>'
+    
+    def is_expired(self):
+        """Check if access token is expired"""
+        return datetime.utcnow() >= self.token_expiry
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_identifier': self.user_identifier,
+            'email': self.email,
+            'scope': self.scope,
+            'token_expiry': self.token_expiry.isoformat(),
+            'is_expired': self.is_expired(),
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat()
         }
 
 # Admin settings model (stored in database)
@@ -850,6 +879,13 @@ def admin_delete_all_registrations():
     return redirect(url_for('admin_dashboard'))
 
 # Google Drive Settings Routes
+@app.route('/admin/drive/oauth')
+@login_required
+def admin_drive_oauth():
+    """Google Drive OAuth 2.0 connection page"""
+    oauth_client_id = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
+    return render_template('admin_drive_oauth.html', oauth_client_id=oauth_client_id)
+
 @app.route('/admin/drive/settings', methods=['GET', 'POST'])
 @login_required
 def admin_drive_settings():
@@ -1231,6 +1267,217 @@ def admin_test_account(account_id):
         flash(f'Error testing account: {str(e)}', 'error')
     
     return redirect(url_for('admin_email_accounts'))
+
+# ============================================
+# OAuth 2.0 Routes for Google Drive
+# ============================================
+
+@app.route('/admin/drive/oauth/status')
+@login_required
+def admin_drive_oauth_status():
+    """Get OAuth connection status"""
+    try:
+        token = DriveOAuthToken.query.filter_by(user_identifier='admin').first()
+        
+        if token:
+            return jsonify({
+                'connected': True,
+                'email': token.email,
+                'expires_at': token.token_expiry.isoformat(),
+                'is_expired': token.is_expired()
+            })
+        else:
+            return jsonify({'connected': False})
+    except Exception as e:
+        app.logger.error(f'Error checking OAuth status: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/drive/oauth/exchange', methods=['POST'])
+@login_required
+def admin_drive_oauth_exchange():
+    """Exchange authorization code for OAuth tokens"""
+    import requests
+    from datetime import timedelta
+    
+    try:
+        data = request.get_json()
+        code = data.get('code')
+        
+        if not code:
+            return jsonify({'error': 'No authorization code provided'}), 400
+        
+        # Get OAuth client credentials from environment
+        client_id = os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
+        client_secret = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET')
+        redirect_uri = os.environ.get('GOOGLE_OAUTH_REDIRECT_URI', 'postmessage')  # For popup flow
+        
+        if not client_id or not client_secret:
+            return jsonify({'error': 'OAuth credentials not configured in environment'}), 500
+        
+        # Exchange code for tokens
+        token_url = 'https://oauth2.googleapis.com/token'
+        token_data = {
+            'code': code,
+            'client_id': client_id,
+            'client_secret': client_secret,
+            'redirect_uri': redirect_uri,
+            'grant_type': 'authorization_code'
+        }
+        
+        app.logger.info(f'Exchanging OAuth code for tokens...')
+        response = requests.post(token_url, data=token_data)
+        
+        if response.status_code != 200:
+            app.logger.error(f'Token exchange failed: {response.text}')
+            return jsonify({'error': 'Failed to exchange authorization code', 'details': response.text}), 400
+        
+        token_response = response.json()
+        access_token = token_response.get('access_token')
+        refresh_token = token_response.get('refresh_token')
+        expires_in = token_response.get('expires_in', 3600)  # Default 1 hour
+        scope = token_response.get('scope', '')
+        
+        if not access_token or not refresh_token:
+            return jsonify({'error': 'No tokens received from Google'}), 400
+        
+        # Get user info from Google
+        userinfo_url = 'https://www.googleapis.com/oauth2/v2/userinfo'
+        headers = {'Authorization': f'Bearer {access_token}'}
+        userinfo_response = requests.get(userinfo_url, headers=headers)
+        
+        email = None
+        if userinfo_response.status_code == 200:
+            userinfo = userinfo_response.json()
+            email = userinfo.get('email')
+        
+        # Calculate expiry time
+        token_expiry = datetime.utcnow() + timedelta(seconds=expires_in)
+        
+        # Save or update token in database
+        token = DriveOAuthToken.query.filter_by(user_identifier='admin').first()
+        
+        if token:
+            # Update existing token
+            token.access_token = access_token
+            token.refresh_token = refresh_token
+            token.token_expiry = token_expiry
+            token.scope = scope
+            token.email = email
+            token.updated_at = datetime.utcnow()
+        else:
+            # Create new token
+            token = DriveOAuthToken(
+                user_identifier='admin',
+                access_token=access_token,
+                refresh_token=refresh_token,
+                token_expiry=token_expiry,
+                scope=scope,
+                email=email
+            )
+            db.session.add(token)
+        
+        db.session.commit()
+        
+        app.logger.info(f'OAuth tokens saved successfully for {email}')
+        
+        return jsonify({
+            'success': True,
+            'email': email,
+            'expires_at': token_expiry.isoformat()
+        })
+        
+    except Exception as e:
+        app.logger.error(f'Error exchanging OAuth code: {str(e)}')
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/drive/oauth/disconnect', methods=['POST'])
+@login_required
+def admin_drive_oauth_disconnect():
+    """Disconnect OAuth and revoke tokens"""
+    import requests
+    
+    try:
+        token = DriveOAuthToken.query.filter_by(user_identifier='admin').first()
+        
+        if token:
+            # Revoke the refresh token with Google
+            try:
+                revoke_url = f'https://oauth2.googleapis.com/revoke?token={token.refresh_token}'
+                requests.post(revoke_url)
+                app.logger.info('OAuth token revoked with Google')
+            except Exception as revoke_error:
+                app.logger.warning(f'Failed to revoke token with Google: {str(revoke_error)}')
+            
+            # Delete from database
+            db.session.delete(token)
+            db.session.commit()
+            
+            return jsonify({'success': True, 'message': 'Disconnected successfully'})
+        else:
+            return jsonify({'success': False, 'message': 'No connection to disconnect'})
+            
+    except Exception as e:
+        app.logger.error(f'Error disconnecting OAuth: {str(e)}')
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/drive/oauth/refresh', methods=['POST'])
+@login_required
+def admin_drive_oauth_refresh():
+    """Manually refresh OAuth access token"""
+    import requests
+    from datetime import timedelta
+    
+    try:
+        token = DriveOAuthToken.query.filter_by(user_identifier='admin').first()
+        
+        if not token:
+            return jsonify({'error': 'No OAuth connection found'}), 404
+        
+        # Get OAuth client credentials
+        client_id = os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
+        client_secret = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET')
+        
+        if not client_id or not client_secret:
+            return jsonify({'error': 'OAuth credentials not configured'}), 500
+        
+        # Refresh the access token
+        token_url = 'https://oauth2.googleapis.com/token'
+        token_data = {
+            'client_id': client_id,
+            'client_secret': client_secret,
+            'refresh_token': token.refresh_token,
+            'grant_type': 'refresh_token'
+        }
+        
+        response = requests.post(token_url, data=token_data)
+        
+        if response.status_code != 200:
+            app.logger.error(f'Token refresh failed: {response.text}')
+            return jsonify({'error': 'Failed to refresh token', 'details': response.text}), 400
+        
+        token_response = response.json()
+        access_token = token_response.get('access_token')
+        expires_in = token_response.get('expires_in', 3600)
+        
+        # Update token in database
+        token.access_token = access_token
+        token.token_expiry = datetime.utcnow() + timedelta(seconds=expires_in)
+        token.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        app.logger.info('OAuth token refreshed successfully')
+        
+        return jsonify({
+            'success': True,
+            'expires_at': token.token_expiry.isoformat()
+        })
+        
+    except Exception as e:
+        app.logger.error(f'Error refreshing OAuth token: {str(e)}')
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 # ============================================
 # Photo Upload Routes
