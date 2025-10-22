@@ -10,13 +10,18 @@ WorkingDirectory=/opt/photo-registration-form
 Environment="PATH=/opt/photo-registration-form/venv/bin"
 Environment="SECRET_KEY=your-secret-key-change-me"
 EnvironmentFile=-/opt/photo-registration-form/.env
+
+# Runtime directory - systemd creates this with proper permissions
+RuntimeDirectory=photo-registration
+RuntimeDirectoryMode=0755
+
+# Log directory - needs to exist before service starts
 ExecStartPre=/bin/mkdir -p /var/log/photo-registration
-ExecStartPre=/bin/mkdir -p /var/run/photo-registration
 ExecStartPre=/bin/mkdir -p /opt/photo-registration-form/instance
 ExecStartPre=/bin/chown www-data:www-data /var/log/photo-registration
-ExecStartPre=/bin/chown www-data:www-data /var/run/photo-registration
 ExecStartPre=/bin/chown www-data:www-data /opt/photo-registration-form/instance
 ExecStartPre=/opt/photo-registration-form/venv/bin/python3 /opt/photo-registration-form/init_database.py
+
 ExecStart=/opt/photo-registration-form/venv/bin/gunicorn --config gunicorn_config.py app:app
 ExecReload=/bin/kill -s HUP $MAINPID
 KillMode=mixed

@@ -12,8 +12,13 @@ backlog = 2048
 workers = multiprocessing.cpu_count() * 2 + 1
 worker_class = "sync"
 worker_connections = 1000
-timeout = 30
+timeout = 300  # Increased from 30 to 300 seconds (5 minutes) for large file uploads
 keepalive = 2
+
+# Request limits
+limit_request_line = 8190  # Maximum size of HTTP request line
+limit_request_fields = 100  # Maximum number of headers
+limit_request_field_size = 8190  # Maximum size of header field
 
 # Logging
 accesslog = "/var/log/photo-registration/access.log"
@@ -26,7 +31,7 @@ proc_name = "photo-registration"
 
 # Server mechanics
 daemon = False
-pidfile = "/var/run/photo-registration/gunicorn.pid"
+pidfile = "/run/photo-registration/gunicorn.pid"  # Changed from /var/run to /run (systemd RuntimeDirectory)
 umask = 0
 user = None
 group = None
