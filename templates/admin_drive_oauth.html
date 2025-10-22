@@ -263,6 +263,16 @@
 
         <div id="alertContainer"></div>
 
+        <!-- Configuration Status -->
+        <div class="card" id="configCard" style="display: none;">
+            <h2>⚙️ Configuration Status</h2>
+            <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; font-family: monospace; font-size: 0.9rem;">
+                <div><strong>OAuth Client ID:</strong> <span id="configClientId">Checking...</span></div>
+                <div style="margin-top: 0.5rem;"><strong>Google Script:</strong> <span id="configGoogleScript">Checking...</span></div>
+                <div style="margin-top: 0.5rem;"><strong>Current Origin:</strong> <span id="configOrigin">Checking...</span></div>
+            </div>
+        </div>
+
         <div class="card">
             <h2>Connection Status</h2>
             
@@ -290,16 +300,85 @@
                 </ul>
             </div>
 
-            <div class="setup-steps" id="setupSteps" style="display: none;">
-                <h3>🔧 Initial Setup Required</h3>
+            <div class="setup-steps">
+                <h3>🔧 OAuth 2.0 Setup Instructions</h3>
                 <ol>
-                    <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a></li>
-                    <li>Create <strong>OAuth 2.0 Client ID</strong> (Web application type)</li>
-                    <li>Add your site URL to <strong>Authorized JavaScript origins</strong></li>
-                    <li>Set redirect URI to <strong>postmessage</strong> (for popup flow)</li>
-                    <li>Add <strong>GOOGLE_OAUTH_CLIENT_ID</strong> and <strong>GOOGLE_OAUTH_CLIENT_SECRET</strong> to your .env file</li>
-                    <li>Restart the application</li>
+                    <li><strong>Go to Google Cloud Console:</strong>
+                        <ul>
+                            <li>Visit <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console - Credentials</a></li>
+                            <li>Select your project (or create one)</li>
+                        </ul>
+                    </li>
+                    <li><strong>Enable Google Drive API:</strong>
+                        <ul>
+                            <li>Go to <a href="https://console.cloud.google.com/apis/library/drive.googleapis.com" target="_blank">Drive API Library</a></li>
+                            <li>Click <strong>"ENABLE"</strong></li>
+                        </ul>
+                    </li>
+                    <li><strong>Create OAuth 2.0 Client ID:</strong>
+                        <ul>
+                            <li>Back in Credentials, click <strong>"+ CREATE CREDENTIALS"</strong></li>
+                            <li>Select <strong>"OAuth 2.0 Client ID"</strong></li>
+                            <li>If prompted, configure OAuth consent screen first</li>
+                            <li>Application type: <strong>"Web application"</strong></li>
+                            <li>Name: <code>Photo Registration OAuth</code></li>
+                        </ul>
+                    </li>
+                    <li><strong>Configure Authorized Origins:</strong>
+                        <ul>
+                            <li>Under "Authorized JavaScript origins", click <strong>"+ ADD URI"</strong></li>
+                            <li>Add: <code id="currentOrigin">http://localhost:5000</code> <button onclick="copyOrigin()" style="font-size: 0.8em; padding: 2px 8px; cursor: pointer;">Copy</button></li>
+                            <li><em>Use your actual domain (http:// or https://)</em></li>
+                        </ul>
+                    </li>
+                    <li><strong>Leave Redirect URIs Empty:</strong>
+                        <ul>
+                            <li>For popup flow (recommended), leave "Authorized redirect URIs" empty</li>
+                            <li>Or add your domain URL if needed</li>
+                        </ul>
+                    </li>
+                    <li><strong>Create and Copy Credentials:</strong>
+                        <ul>
+                            <li>Click <strong>"CREATE"</strong></li>
+                            <li>Copy the <strong>Client ID</strong></li>
+                            <li>Copy the <strong>Client Secret</strong></li>
+                        </ul>
+                    </li>
+                    <li><strong>Update .env File:</strong>
+                        <ul>
+                            <li>Open your <code>.env</code> file</li>
+                            <li>Add these lines:</li>
+                        </ul>
+                        <pre style="background: #2d2d2d; color: #f8f8f2; padding: 10px; border-radius: 4px; margin-top: 5px;">GOOGLE_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-your-client-secret
+GOOGLE_OAUTH_REDIRECT_URI=postmessage</pre>
+                    </li>
+                    <li><strong>Restart Application:</strong>
+                        <ul>
+                            <li>Stop the application (Ctrl+C or systemctl stop)</li>
+                            <li>Start it again</li>
+                            <li>Refresh this page</li>
+                        </ul>
+                    </li>
+                    <li><strong>Connect:</strong>
+                        <ul>
+                            <li>Click <strong>"Connect Google Drive"</strong> button above</li>
+                            <li>Sign in with your Google account</li>
+                            <li>Grant Drive permissions</li>
+                            <li>✅ Done!</li>
+                        </ul>
+                    </li>
                 </ol>
+                
+                <div style="background: #fff3cd; padding: 10px; border-radius: 4px; margin-top: 15px; border-left: 4px solid #ffc107;">
+                    <strong>⚠️ Important:</strong>
+                    <ul style="margin: 5px 0 0 20px;">
+                        <li>Make sure the origin in Google Console <strong>exactly matches</strong> your site URL</li>
+                        <li>Include the protocol (http:// or https://)</li>
+                        <li>Don't include trailing slashes</li>
+                        <li>After making changes, restart the app</li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
@@ -307,6 +386,14 @@
     <script>
         const OAUTH_CLIENT_ID = '{{ oauth_client_id }}';
         let tokenClient = null;
+
+        // Debug: Log client ID on load
+        console.log('=== OAuth Debug Info ===');
+        console.log('Client ID from server:', OAUTH_CLIENT_ID);
+        console.log('Client ID length:', OAUTH_CLIENT_ID.length);
+        console.log('Is empty?', OAUTH_CLIENT_ID === '');
+        console.log('Google script loaded?', typeof google !== 'undefined');
+        console.log('========================');
 
         // Show alert message
         function showAlert(message, type = 'info') {
@@ -366,17 +453,18 @@
                 return;
             }
 
-            google.accounts.oauth2.initCodeClient({
-                client_id: OAUTH_CLIENT_ID,
-                scope: 'openid email profile https://www.googleapis.com/auth/drive.file',
-                ux_mode: 'popup',
-                callback: handleAuthResponse
-            }).then(client => {
-                tokenClient = client;
-                console.log('Google OAuth initialized');
-            }).catch(error => {
+            try {
+                tokenClient = google.accounts.oauth2.initCodeClient({
+                    client_id: OAUTH_CLIENT_ID,
+                    scope: 'openid email profile https://www.googleapis.com/auth/drive.file',
+                    ux_mode: 'popup',
+                    callback: handleAuthResponse
+                });
+                console.log('Google OAuth initialized successfully');
+            } catch (error) {
                 console.error('Failed to initialize OAuth:', error);
-            });
+                showAlert('Failed to initialize Google OAuth. Please check console.', 'error');
+            }
         }
 
         // Handle OAuth response
@@ -430,11 +518,71 @@
         // Connect to Google Drive
         function connect() {
             if (!tokenClient) {
-                showAlert('Google OAuth not initialized. Please refresh the page.', 'error');
+                // Try to initialize again if not ready
+                console.log('Token client not initialized, attempting to initialize...');
+                if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+                    initGoogleOAuth();
+                    if (tokenClient) {
+                        tokenClient.requestCode();
+                        return;
+                    }
+                }
+                showAlert('Google OAuth not initialized. Please ensure you have configured OAuth credentials and restarted the app.', 'error');
                 return;
             }
 
             tokenClient.requestCode();
+        }
+
+        // Copy origin to clipboard
+        function copyOrigin() {
+            const origin = window.location.origin;
+            navigator.clipboard.writeText(origin).then(() => {
+                showAlert('Origin copied to clipboard: ' + origin, 'success');
+            }).catch(err => {
+                showAlert('Failed to copy: ' + err, 'error');
+            });
+        }
+
+        // Update current origin display
+        function updateOriginDisplay() {
+            const originElement = document.getElementById('currentOrigin');
+            if (originElement) {
+                originElement.textContent = window.location.origin;
+            }
+        }
+
+        // Update configuration status display
+        function updateConfigStatus() {
+            const configCard = document.getElementById('configCard');
+            const clientIdSpan = document.getElementById('configClientId');
+            const googleScriptSpan = document.getElementById('configGoogleScript');
+            const originSpan = document.getElementById('configOrigin');
+
+            if (configCard) configCard.style.display = 'block';
+            
+            // Client ID status
+            if (clientIdSpan) {
+                if (OAUTH_CLIENT_ID && OAUTH_CLIENT_ID !== '') {
+                    clientIdSpan.innerHTML = `<span style="color: #28a745;">✓ Configured</span> (${OAUTH_CLIENT_ID.substring(0, 20)}...)`;
+                } else {
+                    clientIdSpan.innerHTML = `<span style="color: #dc3545;">✗ Not configured</span>`;
+                }
+            }
+
+            // Google script status
+            if (googleScriptSpan) {
+                if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+                    googleScriptSpan.innerHTML = `<span style="color: #28a745;">✓ Loaded</span>`;
+                } else {
+                    googleScriptSpan.innerHTML = `<span style="color: #dc3545;">✗ Not loaded</span>`;
+                }
+            }
+
+            // Origin
+            if (originSpan) {
+                originSpan.textContent = window.location.origin;
+            }
         }
 
         // Disconnect from Google Drive
@@ -495,15 +643,36 @@
 
         // Initialize on page load
         window.addEventListener('load', () => {
+            // Update origin display
+            updateOriginDisplay();
+            
+            // Update configuration status
+            updateConfigStatus();
+            
+            // Check connection status
             checkStatus();
             
-            // Wait for Google Identity Services to load
-            if (typeof google !== 'undefined' && google.accounts) {
-                initGoogleOAuth();
-            } else {
-                // Wait for script to load
-                setTimeout(initGoogleOAuth, 1000);
+            // Initialize Google OAuth with retry logic
+            let retryCount = 0;
+            const maxRetries = 5;
+            
+            function tryInitialize() {
+                if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+                    console.log('Google Identity Services loaded');
+                    updateConfigStatus(); // Update status again after script loads
+                    initGoogleOAuth();
+                } else if (retryCount < maxRetries) {
+                    retryCount++;
+                    console.log(`Waiting for Google Identity Services... (attempt ${retryCount}/${maxRetries})`);
+                    setTimeout(tryInitialize, 500);
+                } else {
+                    console.error('Google Identity Services failed to load after multiple attempts');
+                    updateConfigStatus(); // Show failed status
+                    showAlert('Failed to load Google OAuth. Please check your internet connection and refresh.', 'error');
+                }
             }
+            
+            tryInitialize();
         });
     </script>
 </body>
