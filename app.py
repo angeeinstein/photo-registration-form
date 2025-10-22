@@ -594,6 +594,52 @@ def admin_dashboard():
         # Re-raise for general error handler
         raise
 
+@app.route('/admin/registration/<int:registration_id>/qr-code')
+@login_required
+def get_registration_qr_code(registration_id):
+    """Generate and return QR code image for a specific registration"""
+    from io import BytesIO
+    from flask import send_file
+    
+    try:
+        # Get the registration
+        registration = Registration.query.get_or_404(registration_id)
+        
+        # Import QR generator
+        try:
+            from qr_generator import generate_qr_code
+        except ImportError:
+            app.logger.error("QR generator module not found")
+            return jsonify({'error': 'QR generation not available'}), 500
+        
+        # Prepare person data
+        person_data = {
+            'first_name': registration.first_name,
+            'last_name': registration.last_name,
+            'email': registration.email,
+            'phone': registration.phone or '',
+            'registration_id': registration.id
+        }
+        
+        # Generate QR code as PNG bytes
+        qr_bytes = generate_qr_code(person_data, output_format='bytes')
+        
+        if not qr_bytes:
+            app.logger.error(f"Failed to generate QR code for registration {registration_id}")
+            return jsonify({'error': 'Failed to generate QR code'}), 500
+        
+        # Return as image
+        return send_file(
+            BytesIO(qr_bytes),
+            mimetype='image/png',
+            as_attachment=False,
+            download_name=f'qr_code_{registration.first_name}_{registration.last_name}.png'
+        )
+        
+    except Exception as e:
+        app.logger.error(f"Error generating QR code for registration {registration_id}: {str(e)}")
+        return jsonify({'error': 'Failed to generate QR code'}), 500
+
 @app.route('/admin/settings', methods=['GET', 'POST'])
 @login_required
 def admin_settings():

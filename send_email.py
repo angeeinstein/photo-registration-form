@@ -17,9 +17,11 @@ import logging
 
 try:
     from jinja2 import Template
+    from markupsafe import Markup
 except ImportError:
     # Fallback if jinja2 is not available
     Template = None
+    Markup = None
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -197,7 +199,10 @@ class EmailSender:
             
             # Render template with Jinja2 if available
             if Template is not None:
-                template = Template(template_content)
+                from jinja2 import Environment
+                # Create environment with autoescape disabled for data URIs
+                env = Environment(autoescape=False)
+                template = env.from_string(template_content)
                 html_body = template.render(**variables)
             else:
                 # Fallback to simple string replacement
@@ -355,6 +360,8 @@ def send_confirmation_email(to_email: str, first_name: str, last_name: str, regi
             )
             variables['qr_code_data_uri'] = qr_code_data_uri
             logger.info(f"QR code generated successfully for registration {registration_id}")
+            logger.debug(f"QR code data URI length: {len(qr_code_data_uri)} characters")
+            logger.debug(f"QR code data URI starts with: {qr_code_data_uri[:50]}...")
         except ImportError as e:
             logger.error(f"Failed to import qr_generator: {e}")
             logger.error("Make sure qrcode[pil] package is installed: pip install 'qrcode[pil]'")

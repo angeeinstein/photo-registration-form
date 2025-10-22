@@ -103,9 +103,12 @@
                     </td>
                     <td>
                         <div class="actions">
+                            <button onclick="showQRCode({{ reg.id }}, '{{ reg.first_name }}', '{{ reg.last_name }}')" class="btn" style="background: #667eea; color: white; margin-right: 5px;">
+                                📱 View QR
+                            </button>
                             <form method="POST" action="{{ url_for('admin_resend_confirmation', registration_id=reg.id) }}" style="display: inline; margin-right: 5px;">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="btn btn-info" style="background: #17a2b8;">📧 Resend Confirmation</button>
+                                <button type="submit" class="btn btn-info" style="background: #17a2b8;">📧 Resend</button>
                             </form>
                             <form method="POST" action="{{ url_for('admin_send_photos', registration_id=reg.id) }}" style="display: inline;">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -464,8 +467,84 @@
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 closeDeleteAllModal();
+                closeQRModal();
+            }
+        });
+
+        // QR Code Modal Functions
+        async function showQRCode(registrationId, firstName, lastName) {
+            const modal = document.getElementById('qrModal');
+            const qrImage = document.getElementById('qrImage');
+            const qrName = document.getElementById('qrName');
+            const qrLoading = document.getElementById('qrLoading');
+            
+            // Show modal and loading state
+            modal.style.display = 'flex';
+            qrLoading.style.display = 'block';
+            qrImage.style.display = 'none';
+            qrName.textContent = `${firstName} ${lastName}`;
+            
+            try {
+                // Fetch QR code from server
+                const response = await fetch(`/admin/registration/${registrationId}/qr-code`);
+                if (!response.ok) {
+                    throw new Error('Failed to generate QR code');
+                }
+                
+                const blob = await response.blob();
+                const imageUrl = URL.createObjectURL(blob);
+                
+                // Display QR code
+                qrImage.src = imageUrl;
+                qrImage.onload = () => {
+                    qrLoading.style.display = 'none';
+                    qrImage.style.display = 'block';
+                };
+            } catch (error) {
+                console.error('Error loading QR code:', error);
+                qrLoading.innerHTML = '<p style="color: #dc3545;">Failed to load QR code. Please try again.</p>';
+            }
+        }
+
+        function closeQRModal() {
+            const modal = document.getElementById('qrModal');
+            const qrImage = document.getElementById('qrImage');
+            modal.style.display = 'none';
+            // Clean up object URL
+            if (qrImage.src.startsWith('blob:')) {
+                URL.revokeObjectURL(qrImage.src);
+            }
+            qrImage.src = '';
+        }
+
+        // Close QR modal when clicking outside
+        window.addEventListener('click', function(event) {
+            const qrModal = document.getElementById('qrModal');
+            if (event.target === qrModal) {
+                closeQRModal();
             }
         });
     </script>
+
+    <!-- QR Code Modal -->
+    <div id="qrModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center;">
+        <div style="background: white; padding: 2rem; border-radius: 12px; max-width: 500px; width: 90%; text-align: center; position: relative;">
+            <button onclick="closeQRModal()" style="position: absolute; top: 10px; right: 10px; background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">&times;</button>
+            
+            <h2 style="margin-top: 0; margin-bottom: 0.5rem; color: #333;">📱 QR Code</h2>
+            <p id="qrName" style="color: #667eea; font-weight: 600; margin-bottom: 1.5rem;"></p>
+            
+            <div id="qrLoading" style="padding: 2rem;">
+                <div class="spinner" style="margin: 0 auto;"></div>
+                <p style="margin-top: 1rem; color: #666;">Generating QR code...</p>
+            </div>
+            
+            <img id="qrImage" src="" alt="QR Code" style="display: none; max-width: 100%; height: auto; border: 2px solid #e0e0e0; border-radius: 8px;">
+            
+            <p style="margin-top: 1.5rem; color: #666; font-size: 0.9rem;">
+                Scan this code with a phone to access registration details
+            </p>
+        </div>
+    </div>
 </body>
 </html>

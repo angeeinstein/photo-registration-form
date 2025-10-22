@@ -169,6 +169,26 @@ def qr_code_to_base64(qr_image: PilImage, format: str = 'PNG') -> str:
     return img_str
 
 
+def qr_code_to_bytes(qr_image: PilImage, format: str = 'PNG') -> bytes:
+    """
+    Convert QR code image to bytes for file serving.
+    
+    Args:
+        qr_image: PIL Image object
+        format: Image format (PNG, JPEG, etc.)
+    
+    Returns:
+        Image bytes
+        
+    Usage:
+        img_bytes = qr_code_to_bytes(qr_img)
+        # Can be served via Flask's send_file
+    """
+    buffered = BytesIO()
+    qr_image.save(buffered, format=format)
+    return buffered.getvalue()
+
+
 def save_qr_code(qr_image: PilImage, filepath: str) -> None:
     """
     Save QR code image to file.
@@ -222,6 +242,57 @@ def generate_qr_code_inline(
     )
     base64_str = qr_code_to_base64(qr_img)
     return f"data:image/png;base64,{base64_str}"
+
+
+def generate_qr_code(person_data: dict, output_format: str = 'data_uri', size: int = 300):
+    """
+    Generate QR code from person data dictionary with flexible output format.
+    
+    This function handles the format used in send_email.py where person data
+    includes first_name, last_name, email, and registration_id.
+    
+    Args:
+        person_data: Dictionary with person information
+            Required keys: first_name, last_name, email, registration_id
+            Optional keys: qr_token
+        output_format: Output format - 'data_uri', 'bytes', or 'image'
+        size: QR code size in pixels (default: 300x300)
+    
+    Returns:
+        - 'data_uri': Complete data URI string for inline HTML
+        - 'bytes': Raw image bytes for file serving
+        - 'image': PIL Image object
+    
+    Usage:
+        # For email embedding
+        data_uri = generate_qr_code(person_data, output_format='data_uri')
+        
+        # For HTTP response
+        img_bytes = generate_qr_code(person_data, output_format='bytes')
+    """
+    # Extract data from dictionary
+    first_name = person_data.get('first_name', '')
+    last_name = person_data.get('last_name', '')
+    email = person_data.get('email', '')
+    registration_id = person_data.get('registration_id', 0)
+    qr_token = person_data.get('qr_token', '')
+    
+    # Generate QR data string
+    qr_data = generate_qr_data(first_name, last_name, email, registration_id, qr_token)
+    
+    # Create QR code image
+    qr_img = create_qr_code(qr_data, size)
+    
+    # Return in requested format
+    if output_format == 'data_uri':
+        base64_str = qr_code_to_base64(qr_img)
+        return f"data:image/png;base64,{base64_str}"
+    elif output_format == 'bytes':
+        return qr_code_to_bytes(qr_img)
+    elif output_format == 'image':
+        return qr_img
+    else:
+        raise ValueError(f"Unknown output format: {output_format}")
 
 
 # Example usage and testing
