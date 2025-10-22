@@ -505,18 +505,26 @@
                     <p>Click on the created service account → Go to "Keys" tab → "Add Key" → "Create new key" → Choose "JSON" → The file will download automatically.</p>
                 </li>
                 <li>
-                    <strong>⭐ Share Drive Folder (CRITICAL STEP!)</strong>
-                    <p><strong>In Google Drive, you MUST share your parent folder with the service account:</strong></p>
-                    <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
-                        <li>Open the JSON file and copy the <code>client_email</code> value (looks like <code>photo-uploader@project-id.iam.gserviceaccount.com</code>)</li>
-                        <li>Go to Google Drive and navigate to your event photos folder</li>
-                        <li>Right-click the folder → Click "Share"</li>
-                        <li>Paste the service account email in the "Add people" field</li>
-                        <li>Change permission to <strong>"Editor"</strong></li>
-                        <li>Uncheck "Notify people" (it's a service account, not a person)</li>
-                        <li>Click "Send" or "Share"</li>
-                    </ul>
-                    <p style="margin-top: 0.5rem; color: #dc3545; font-weight: 600;">⚠️ Without this step, you'll get "File not found" or "Cannot access parent folder" errors!</p>
+                    <strong>⭐ Share Drive Folder (CRITICAL - Use EXACT Steps!)</strong>
+                    <p><strong>Service accounts have limited access to personal Drive folders. Follow these EXACT steps:</strong></p>
+                    <ol style="margin-left: 1.5rem; margin-top: 0.5rem; list-style-type: lower-alpha;">
+                        <li>Open the JSON file you downloaded and find the <code>"client_email"</code> line</li>
+                        <li>Copy the ENTIRE email address (e.g., <code>photo-uploader@project-name-123456.iam.gserviceaccount.com</code>)</li>
+                        <li>Open Google Drive in your browser (drive.google.com)</li>
+                        <li>Navigate to the folder you want to use for photos</li>
+                        <li>Click the folder name (don't open it, just select it)</li>
+                        <li>Click the "Share" button (person with + icon) in the top toolbar</li>
+                        <li>In the "Add people and groups" field, paste the service account email</li>
+                        <li>Press Enter or Tab - you should see the email appear as a chip/tag</li>
+                        <li>Click the dropdown next to the email and select <strong>"Editor"</strong></li>
+                        <li>Uncheck "Notify people"</li>
+                        <li>Click "Share" or "Done"</li>
+                        <li><strong>WAIT 60 seconds</strong> for Google's servers to sync the permissions</li>
+                    </ol>
+                    <p style="margin-top: 0.5rem; color: #dc3545; font-weight: 600;">⚠️ Common mistakes: Using "Viewer" instead of "Editor", not waiting for permissions to sync, typo in email address!</p>
+                    
+                    <p style="margin-top: 1rem;"><strong>Alternative Option (If sharing doesn't work):</strong></p>
+                    <p>Leave the "Parent Folder ID" field <strong>EMPTY</strong>. Photos will be created in the service account's own Drive, and you can access them via the shareable links that are generated. You can then move the folders to your personal Drive for review if needed.</p>
                 </li>
                 <li>
                     <strong>Get Folder ID</strong>

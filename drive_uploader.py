@@ -28,7 +28,8 @@ class DriveUploader:
     - Generate shareable links
     """
     
-    SCOPES = ['https://www.googleapis.com/auth/drive.file']
+    # Use full Drive scope to access shared folders
+    SCOPES = ['https://www.googleapis.com/auth/drive']
     
     def __init__(self):
         self.drive_manager = DriveCredentialsManager()

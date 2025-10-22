@@ -891,10 +891,10 @@ def admin_drive_test_connection():
             from google.oauth2 import service_account
             from googleapiclient.discovery import build
             
-            # Create credentials
+            # Create credentials with full Drive scope
             credentials = service_account.Credentials.from_service_account_file(
                 creds_path,
-                scopes=['https://www.googleapis.com/auth/drive.file']
+                scopes=['https://www.googleapis.com/auth/drive']
             )
             
             # Build Drive service
@@ -916,6 +916,18 @@ def admin_drive_test_connection():
                     # First, list what the service account can see
                     app.logger.info(f"Attempting to access folder ID: {parent_folder_id}")
                     
+                    # Try to list files to see if we can query at all
+                    try:
+                        list_result = service.files().list(
+                            pageSize=1,
+                            fields='files(id, name)',
+                            supportsAllDrives=True,
+                            includeItemsFromAllDrives=True
+                        ).execute()
+                        app.logger.info(f"Service account can list files: {len(list_result.get('files', []))} files found")
+                    except Exception as list_error:
+                        app.logger.error(f"Cannot list files: {str(list_error)}")
+                    
                     # First, try to get folder metadata
                     folder = service.files().get(
                         fileId=parent_folder_id,
@@ -926,6 +938,29 @@ def admin_drive_test_connection():
                     app.logger.info(f"Folder found: {folder.get('name')}")
                     app.logger.info(f"Owned by service account: {folder.get('ownedByMe')}")
                     app.logger.info(f"Shared: {folder.get('shared')}")
+                    
+                    # Check permissions
+                    try:
+                        permissions = service.permissions().list(
+                            fileId=parent_folder_id,
+                            fields='permissions(id, type, role, emailAddress)',
+                            supportsAllDrives=True
+                        ).execute()
+                        
+                        app.logger.info(f"Folder permissions: {permissions.get('permissions', [])}")
+                        
+                        # Check if service account has permission
+                        has_permission = False
+                        for perm in permissions.get('permissions', []):
+                            if perm.get('emailAddress') == user_email:
+                                has_permission = True
+                                app.logger.info(f"Service account permission found: {perm.get('role')}")
+                        
+                        if not has_permission:
+                            app.logger.warning("Service account email not found in folder permissions!")
+                            
+                    except Exception as perm_error:
+                        app.logger.error(f"Cannot list permissions: {str(perm_error)}")
                     
                     # Verify it's actually a folder
                     if folder.get('mimeType') != 'application/vnd.google-apps.folder':
