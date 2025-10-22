@@ -1,10 +1,14 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
 from flask_sqlalchemy import SQLAlchemy
+from flask_wtf.csrf import CSRFProtect, generate_csrf
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from datetime import datetime
 import os
 from dotenv import load_dotenv
 from functools import wraps
 from send_email import send_confirmation_email, send_photos_email, create_email_sender_from_env, test_email_configuration
+import re
 
 # Load environment variables from .env file
 load_dotenv()
@@ -17,6 +21,41 @@ database_uri = os.environ.get('DATABASE_URI', 'sqlite:///' + os.path.join(basedi
 app.config['SQLALCHEMY_DATABASE_URI'] = database_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+
+# Security configurations
+app.config['WTF_CSRF_ENABLED'] = True
+app.config['WTF_CSRF_TIME_LIMIT'] = None  # CSRF tokens don't expire
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
+
+# Initialize CSRF protection
+csrf = CSRFProtect(app)
+
+# Custom function to get real IP behind Cloudflare/proxy
+def get_real_ip():
+    """Get the real client IP, considering Cloudflare and reverse proxies"""
+    # Cloudflare passes the real IP in CF-Connecting-IP header
+    if 'CF-Connecting-IP' in request.headers:
+        return request.headers['CF-Connecting-IP']
+    # Standard proxy headers (nginx, etc.)
+    if 'X-Forwarded-For' in request.headers:
+        # X-Forwarded-For can contain multiple IPs, get the first (original client)
+        return request.headers['X-Forwarded-For'].split(',')[0].strip()
+    if 'X-Real-IP' in request.headers:
+        return request.headers['X-Real-IP']
+    # Fallback to remote address
+    return request.remote_addr or '127.0.0.1'
+
+# Initialize rate limiter with custom IP detection
+limiter = Limiter(
+    app=app,
+    key_func=get_real_ip,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://",
+    strategy="fixed-window"
+)
 
 db = SQLAlchemy(app)
 
@@ -129,6 +168,31 @@ class EmailAccount(db.Model):
             return True
         return False
 
+# Input validation functions
+def validate_email(email):
+    """Validate email format"""
+    if not email or len(email) > 120:
+        return False
+    # Basic email regex pattern
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+def validate_name(name):
+    """Validate name input (letters, spaces, hyphens, apostrophes only)"""
+    if not name or len(name) > 100 or len(name) < 1:
+        return False
+    # Allow letters, spaces, hyphens, apostrophes, and accented characters
+    pattern = r"^[a-zA-ZÀ-ÿ\s'-]+$"
+    return re.match(pattern, name) is not None
+
+def sanitize_input(text):
+    """Sanitize text input to prevent XSS"""
+    if not text:
+        return ""
+    # Strip HTML tags and dangerous characters
+    text = re.sub(r'<[^>]*>', '', text)
+    return text.strip()
+
 # Login required decorator
 def login_required(f):
     @wraps(f)
@@ -138,15 +202,47 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# Disable caching for all HTML responses to ensure fresh CSS/JS
+# Add security headers and disable caching
 @app.after_request
 def add_header(response):
-    """Add headers to prevent caching of HTML pages"""
+    """Add security headers and prevent caching of HTML pages"""
+    # Security headers
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:;"
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+    
+    # Prevent caching of HTML pages
     if response.content_type and 'text/html' in response.content_type:
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '-1'
     return response
+
+# Context processor to inject CSRF token
+@app.context_processor
+def inject_csrf_token():
+    """Make CSRF token available to all templates"""
+    return dict(csrf_token=generate_csrf)
+
+# Error handlers
+@app.errorhandler(400)
+def bad_request(e):
+    """Handle bad request errors (including CSRF failures)"""
+    return jsonify({'error': 'Bad request. Please refresh the page and try again.'}), 400
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    """Handle rate limit errors"""
+    return jsonify({'error': 'Too many requests. Please slow down and try again later.'}), 429
+
+@app.errorhandler(500)
+def internal_error(e):
+    """Handle internal server errors"""
+    return jsonify({'error': 'An internal error occurred. Please try again later.'}), 500
 
 # Routes
 @app.route('/')
@@ -155,6 +251,7 @@ def index():
     return render_template('index.html')
 
 @app.route('/register', methods=['POST'])
+@limiter.limit("10 per minute")  # Rate limit: 10 registrations per minute per IP
 def register():
     """Handle registration form submission"""
     try:
@@ -164,11 +261,27 @@ def register():
         if not data.get('first_name') or not data.get('last_name') or not data.get('email'):
             return jsonify({'error': 'All fields are required'}), 400
         
+        # Sanitize and validate inputs
+        first_name = sanitize_input(data['first_name'].strip())
+        last_name = sanitize_input(data['last_name'].strip())
+        email = data['email'].strip().lower()
+        
+        # Validate name formats
+        if not validate_name(first_name):
+            return jsonify({'error': 'Invalid first name format'}), 400
+        
+        if not validate_name(last_name):
+            return jsonify({'error': 'Invalid last name format'}), 400
+        
+        # Validate email format
+        if not validate_email(email):
+            return jsonify({'error': 'Invalid email format'}), 400
+        
         # Create new registration
         registration = Registration(
-            first_name=data['first_name'].strip(),
-            last_name=data['last_name'].strip(),
-            email=data['email'].strip().lower()
+            first_name=first_name,
+            last_name=last_name,
+            email=email
         )
         
         db.session.add(registration)
@@ -276,17 +389,19 @@ def get_registration_updates():
 
 # Admin Routes
 @app.route('/admin/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")  # Rate limit: 5 login attempts per minute
 def admin_login():
     """Admin login page"""
     if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
+        username = sanitize_input(request.form.get('username', ''))
+        password = request.form.get('password', '')
         
         admin_username = os.getenv('ADMIN_USERNAME', 'admin')
         admin_password = os.getenv('ADMIN_PASSWORD', 'admin')
         
         if username == admin_username and password == admin_password:
             session['admin_logged_in'] = True
+            session.permanent = True
             flash('Successfully logged in!', 'success')
             return redirect(url_for('admin_dashboard'))
         else:
