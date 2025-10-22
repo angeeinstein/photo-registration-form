@@ -505,19 +505,20 @@
                     throw new Error('Received empty image data');
                 }
                 
-                const imageUrl = URL.createObjectURL(blob);
-                
-                // Display QR code
-                qrImage.src = imageUrl;
-                qrImage.onload = () => {
-                    console.log('QR code image loaded successfully');
+                // Convert blob to data URI (instead of blob URL) to avoid CSP issues
+                const reader = new FileReader();
+                reader.onload = () => {
+                    console.log('QR code converted to data URI');
+                    qrImage.src = reader.result;
                     qrLoading.style.display = 'none';
                     qrImage.style.display = 'block';
                 };
-                qrImage.onerror = () => {
-                    console.error('Failed to load QR code image');
+                reader.onerror = () => {
+                    console.error('Failed to read QR code blob');
                     qrLoading.innerHTML = '<p style="color: #dc3545;">Failed to display QR code image.</p>';
                 };
+                reader.readAsDataURL(blob);
+                
             } catch (error) {
                 console.error('Error loading QR code:', error);
                 qrLoading.innerHTML = `<p style="color: #dc3545;">Failed to load QR code.<br><small>${error.message}</small></p>`;
@@ -528,10 +529,7 @@
             const modal = document.getElementById('qrModal');
             const qrImage = document.getElementById('qrImage');
             modal.style.display = 'none';
-            // Clean up object URL
-            if (qrImage.src.startsWith('blob:')) {
-                URL.revokeObjectURL(qrImage.src);
-            }
+            // Clear image source (no need to revoke blob URL since we're using data URI)
             qrImage.src = '';
         }
 
