@@ -243,11 +243,13 @@ class DriveUploader:
                 resumable=True
             )
             
+            # Use multipart upload to avoid service account quota issues
             file = self.service.files().create(
                 body=file_metadata,
                 media_body=media,
                 fields='id, name',
-                supportsAllDrives=True
+                supportsAllDrives=True,
+                enforceSingleParent=True  # Helps with shared folder uploads
             ).execute()
             
             file_id = file.get('id')
