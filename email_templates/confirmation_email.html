@@ -80,15 +80,15 @@
             </div>
             
             {% if qr_code_data_uri %}
-            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 20px; margin: 25px 0; border-radius: 4px;">
+            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 25px 0; border-radius: 4px;">
                 <h2 style="color: #856404; margin-top: 0; font-size: 20px;">📸 IMPORTANT: Your Personal QR Code</h2>
                 
                 <p style="margin: 15px 0; font-weight: bold; color: #856404;">
                     Please save this QR code! You'll need it during your photo session.
                 </p>
                 
-                <div style="text-align: center; margin: 20px 0; padding: 15px; background: white; border-radius: 8px;">
-                    <img src="{{ qr_code_data_uri }}" alt="Your Personal QR Code" style="display: block; width: 300px; height: 300px; max-width: 100%; margin: 0 auto; border: 3px solid #333; border-radius: 8px; background: white; padding: 10px; box-sizing: border-box;">
+                <div style="text-align: center; margin: 15px 0; padding: 10px; background: white; border-radius: 8px;">
+                    <img src="{{ qr_code_data_uri }}" alt="Your Personal QR Code" style="display: block; width: 100% !important; max-width: 400px !important; height: auto !important; margin: 0 auto; border: 3px solid #333; border-radius: 8px; background: white; padding: 10px; box-sizing: border-box;">
                 </div>
                 
                 <div style="background-color: white; padding: 15px; border-radius: 4px; margin: 15px 0;">
