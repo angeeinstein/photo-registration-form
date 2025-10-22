@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
 from flask_sqlalchemy import SQLAlchemy
-from flask_wtf.csrf import CSRFProtect, generate_csrf, csrf_exempt
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.utils import secure_filename
