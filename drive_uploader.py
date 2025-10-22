@@ -116,7 +116,8 @@ class DriveUploader:
             
             folder = self.service.files().create(
                 body=file_metadata,
-                fields='id, name, webViewLink'
+                fields='id, name, webViewLink',
+                supportsAllDrives=True
             ).execute()
             
             folder_id = folder.get('id')
@@ -187,7 +188,9 @@ class DriveUploader:
                 q=query,
                 spaces='drive',
                 fields='files(id, name)',
-                pageSize=1
+                pageSize=1,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True
             ).execute()
             
             files = results.get('files', [])
@@ -242,7 +245,8 @@ class DriveUploader:
             file = self.service.files().create(
                 body=file_metadata,
                 media_body=media,
-                fields='id, name'
+                fields='id, name',
+                supportsAllDrives=True
             ).execute()
             
             file_id = file.get('id')
@@ -311,13 +315,15 @@ class DriveUploader:
             self.service.permissions().create(
                 fileId=folder_id,
                 body=permission,
-                fields='id'
+                fields='id',
+                supportsAllDrives=True
             ).execute()
             
             # Get the folder info including web link
             folder = self.service.files().get(
                 fileId=folder_id,
-                fields='webViewLink'
+                fields='webViewLink',
+                supportsAllDrives=True
             ).execute()
             
             share_link = folder.get('webViewLink')

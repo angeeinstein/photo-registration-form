@@ -904,17 +904,28 @@ def admin_drive_test_connection():
             about = service.about().get(fields='user').execute()
             user_email = about.get('user', {}).get('emailAddress', 'Unknown')
             
+            # Log for debugging
+            app.logger.info(f"Service account authenticated: {user_email}")
+            
             # Test parent folder access if configured
             config = drive_manager.get_config()
             parent_folder_id = config.get('parent_folder_id')
             
             if parent_folder_id:
                 try:
+                    # First, list what the service account can see
+                    app.logger.info(f"Attempting to access folder ID: {parent_folder_id}")
+                    
                     # First, try to get folder metadata
                     folder = service.files().get(
                         fileId=parent_folder_id,
-                        fields='id, name, mimeType, capabilities, owners, permissions'
+                        fields='id, name, mimeType, capabilities, owners, shared, ownedByMe, permissions',
+                        supportsAllDrives=True
                     ).execute()
+                    
+                    app.logger.info(f"Folder found: {folder.get('name')}")
+                    app.logger.info(f"Owned by service account: {folder.get('ownedByMe')}")
+                    app.logger.info(f"Shared: {folder.get('shared')}")
                     
                     # Verify it's actually a folder
                     if folder.get('mimeType') != 'application/vnd.google-apps.folder':
