@@ -500,23 +500,53 @@
                     <p>Click on the created service account → Go to "Keys" tab → "Add Key" → "Create new key" → Choose "JSON" → The file will download automatically.</p>
                 </li>
                 <li>
-                    <strong>Share Drive Folder (Important!)</strong>
-                    <p>In Google Drive, create a folder for your event photos. Right-click → Share → Add the service account email (found in the JSON file, looks like <code>photo-uploader@project-id.iam.gserviceaccount.com</code>) → Give it "Editor" access.</p>
+                    <strong>⭐ Share Drive Folder (CRITICAL STEP!)</strong>
+                    <p><strong>In Google Drive, you MUST share your parent folder with the service account:</strong></p>
+                    <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                        <li>Open the JSON file and copy the <code>client_email</code> value (looks like <code>photo-uploader@project-id.iam.gserviceaccount.com</code>)</li>
+                        <li>Go to Google Drive and navigate to your event photos folder</li>
+                        <li>Right-click the folder → Click "Share"</li>
+                        <li>Paste the service account email in the "Add people" field</li>
+                        <li>Change permission to <strong>"Editor"</strong></li>
+                        <li>Uncheck "Notify people" (it's a service account, not a person)</li>
+                        <li>Click "Send" or "Share"</li>
+                    </ul>
+                    <p style="margin-top: 0.5rem; color: #dc3545; font-weight: 600;">⚠️ Without this step, you'll get "File not found" or "Cannot access parent folder" errors!</p>
                 </li>
                 <li>
                     <strong>Get Folder ID</strong>
-                    <p>Open the shared folder in Google Drive. Copy the folder ID from the URL (the long string after <code>/folders/</code>).</p>
+                    <p>Open the shared folder in Google Drive. Copy the folder ID from the URL (the long string after <code>/folders/</code>). Example: if URL is <code>drive.google.com/drive/folders/1a2b3c4d5e6f</code>, the ID is <code>1a2b3c4d5e6f</code>.</p>
                 </li>
                 <li>
-                    <strong>Upload Here</strong>
-                    <p>Upload the downloaded JSON file using the form above, and paste the folder ID in the "Parent Folder ID" field.</p>
+                    <strong>Upload & Configure Here</strong>
+                    <p>Upload the downloaded JSON file using the form above, paste the folder ID in the "Parent Folder ID" field, and click "Save Configuration".</p>
+                </li>
+                <li>
+                    <strong>Test Connection</strong>
+                    <p>Click the "🔍 Test Connection" button to verify the service account can access your folder. If you see errors, make sure you completed step 7 (sharing the folder).</p>
                 </li>
             </ol>
+
+            <div class="info-box error">
+                <h3>❌ Troubleshooting "Cannot access parent folder" Error</h3>
+                <p><strong>This error means the service account doesn't have permission to the folder. To fix it:</strong></p>
+                <ol style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                    <li>Open your service account JSON file (the one you uploaded)</li>
+                    <li>Find the <code>"client_email"</code> field and copy the email address</li>
+                    <li>Go to Google Drive and open the parent folder</li>
+                    <li>Click the Share button (person with + icon)</li>
+                    <li>Paste the service account email</li>
+                    <li>Set permission to "Editor"</li>
+                    <li>Click Share</li>
+                    <li>Come back here and click "Test Connection" again</li>
+                </ol>
+            </div>
 
             <div class="info-box">
                 <h3>💡 Tips</h3>
                 <ul>
-                    <li>The service account needs "Editor" permissions on the parent folder</li>
+                    <li><strong>The service account MUST have "Editor" permissions on the parent folder</strong></li>
+                    <li>You can find the service account email in the JSON file under the "client_email" field</li>
                     <li>You can change the parent folder ID later without re-uploading credentials</li>
                     <li>Test the connection after uploading to verify everything works</li>
                     <li>Keep a backup of your JSON file in a secure location</li>

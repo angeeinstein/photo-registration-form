@@ -917,10 +917,23 @@ def admin_drive_test_connection():
                     
                     folder_message = f"Parent folder access verified: '{folder.get('name')}'"
                 except Exception as folder_error:
-                    return jsonify({
-                        'success': False,
-                        'error': f'Cannot access parent folder: {str(folder_error)}. Make sure the service account has been granted access to this folder.'
-                    }), 400
+                    error_msg = str(folder_error)
+                    
+                    # Get service account email for better error message
+                    config = drive_manager.get_config()
+                    service_email = config.get('service_account_email', 'unknown')
+                    
+                    # Provide helpful error message
+                    if 'File not found' in error_msg or 'notFound' in error_msg:
+                        return jsonify({
+                            'success': False,
+                            'error': f'❌ Cannot access parent folder (File not found).\n\n📧 Service Account Email: {service_email}\n\n✅ To fix this:\n1. Copy the service account email above\n2. Go to Google Drive and open your parent folder\n3. Click Share button\n4. Paste the service account email\n5. Set permission to "Editor"\n6. Click Share\n7. Try testing again'
+                        }), 400
+                    else:
+                        return jsonify({
+                            'success': False,
+                            'error': f'Cannot access parent folder: {error_msg}\n\nService Account: {service_email}\n\nMake sure the folder is shared with this service account email with "Editor" permissions.'
+                        }), 400
             else:
                 folder_message = "Using root folder (My Drive)"
             
