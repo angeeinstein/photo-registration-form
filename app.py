@@ -1488,6 +1488,72 @@ def admin_drive_oauth_refresh():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/admin/drive/folder-config', methods=['GET', 'POST'])
+@login_required
+def admin_drive_folder_config():
+    """Get or set the parent folder ID for Drive uploads"""
+    try:
+        if request.method == 'GET':
+            # Return current folder configuration
+            folder_id = os.environ.get('GOOGLE_DRIVE_PARENT_FOLDER_ID', '')
+            return jsonify({
+                'folder_id': folder_id if folder_id else None
+            })
+        
+        elif request.method == 'POST':
+            # Update folder configuration
+            data = request.get_json()
+            folder_id = data.get('folder_id', '').strip()
+            
+            # Path to .env file
+            env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+            
+            # Read existing .env file
+            env_lines = []
+            if os.path.exists(env_path):
+                with open(env_path, 'r') as f:
+                    env_lines = f.readlines()
+            
+            # Update or add GOOGLE_DRIVE_PARENT_FOLDER_ID
+            found = False
+            for i, line in enumerate(env_lines):
+                if line.strip().startswith('GOOGLE_DRIVE_PARENT_FOLDER_ID='):
+                    if folder_id:
+                        env_lines[i] = f'GOOGLE_DRIVE_PARENT_FOLDER_ID={folder_id}\n'
+                    else:
+                        env_lines[i] = '#GOOGLE_DRIVE_PARENT_FOLDER_ID=\n'
+                    found = True
+                    break
+            
+            if not found:
+                # Add new line
+                if folder_id:
+                    env_lines.append(f'\nGOOGLE_DRIVE_PARENT_FOLDER_ID={folder_id}\n')
+                else:
+                    env_lines.append(f'\n#GOOGLE_DRIVE_PARENT_FOLDER_ID=\n')
+            
+            # Write back to .env file
+            with open(env_path, 'w') as f:
+                f.writelines(env_lines)
+            
+            # Update current environment
+            if folder_id:
+                os.environ['GOOGLE_DRIVE_PARENT_FOLDER_ID'] = folder_id
+            else:
+                os.environ.pop('GOOGLE_DRIVE_PARENT_FOLDER_ID', None)
+            
+            app.logger.info(f'Drive parent folder updated: {folder_id if folder_id else "None (using Drive root)"}')
+            
+            return jsonify({
+                'success': True,
+                'message': 'Folder configuration saved successfully',
+                'folder_id': folder_id if folder_id else None
+            })
+    
+    except Exception as e:
+        app.logger.error(f'Error managing folder config: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
 # ============================================
 # Photo Upload Routes
 # ============================================

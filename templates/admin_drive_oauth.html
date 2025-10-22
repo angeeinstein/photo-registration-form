@@ -289,6 +289,55 @@
             </div>
         </div>
 
+        <!-- Folder Configuration -->
+        <div class="card">
+            <h2>📁 Drive Folder Configuration</h2>
+            <div style="background: #f8f9fa; padding: 1.25rem; border-radius: 8px;">
+                <div style="margin-bottom: 1rem;">
+                    <label for="parentFolderId" style="display: block; font-weight: 600; margin-bottom: 0.5rem;">
+                        Parent Folder ID (optional):
+                    </label>
+                    <input 
+                        type="text" 
+                        id="parentFolderId" 
+                        placeholder="Leave empty to save in Drive root"
+                        style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 6px; font-size: 0.95rem; font-family: monospace;"
+                    />
+                    <div style="margin-top: 0.5rem; font-size: 0.9rem; color: #666;">
+                        💡 <strong>How to get Folder ID:</strong><br>
+                        1. Open <a href="https://drive.google.com" target="_blank" style="color: #4285f4;">Google Drive</a> in your browser<br>
+                        2. Navigate to the folder where you want photos saved<br>
+                        3. Look at the URL: <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">drive.google.com/drive/folders/<strong>FOLDER_ID_HERE</strong></code><br>
+                        4. Copy the ID and paste it above
+                    </div>
+                </div>
+                <div style="margin-bottom: 1rem;">
+                    <div style="padding: 0.75rem; background: #fff; border: 1px solid #ddd; border-radius: 6px;">
+                        <strong>Current Setting:</strong> 
+                        <span id="currentFolder" style="font-family: monospace; color: #666;">Loading...</span>
+                    </div>
+                </div>
+                <button 
+                    id="saveFolderBtn"
+                    onclick="saveFolderConfig()"
+                    style="padding: 0.75rem 1.5rem; background: #34a853; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.95rem; transition: background 0.2s;"
+                    onmouseover="this.style.background='#2d8e47'"
+                    onmouseout="this.style.background='#34a853'"
+                >
+                    💾 Save Folder Configuration
+                </button>
+            </div>
+            <div style="margin-top: 1rem; padding: 1rem; background: #e8f0fe; border-radius: 8px; border-left: 4px solid #4285f4;">
+                <strong>📋 Folder Structure:</strong><br>
+                <span style="font-family: monospace; font-size: 0.9rem;">
+                    <span id="folderStructure">
+                        [Parent Folder or Drive Root]<br>
+                        └── FirstName_LastName (created automatically)
+                    </span>
+                </span>
+            </div>
+        </div>
+
         <div class="card">
             <div class="info-box">
                 <h3>ℹ️ About OAuth 2.0</h3>
@@ -585,6 +634,82 @@ GOOGLE_OAUTH_REDIRECT_URI=postmessage</pre>
             }
         }
 
+        // Load current folder configuration
+        async function loadFolderConfig() {
+            try {
+                const response = await fetch('/admin/drive/folder-config');
+                const data = await response.json();
+                
+                const currentFolderSpan = document.getElementById('currentFolder');
+                const parentFolderInput = document.getElementById('parentFolderId');
+                
+                if (data.folder_id) {
+                    if (currentFolderSpan) {
+                        currentFolderSpan.textContent = data.folder_id;
+                        currentFolderSpan.style.color = '#28a745';
+                    }
+                    if (parentFolderInput) {
+                        parentFolderInput.value = data.folder_id;
+                    }
+                } else {
+                    if (currentFolderSpan) {
+                        currentFolderSpan.textContent = 'Not configured (using Drive root)';
+                        currentFolderSpan.style.color = '#666';
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load folder config:', error);
+                const currentFolderSpan = document.getElementById('currentFolder');
+                if (currentFolderSpan) {
+                    currentFolderSpan.textContent = 'Error loading configuration';
+                    currentFolderSpan.style.color = '#dc3545';
+                }
+            }
+        }
+
+        // Save folder configuration
+        async function saveFolderConfig() {
+            const parentFolderId = document.getElementById('parentFolderId').value.trim();
+            const saveBtn = document.getElementById('saveFolderBtn');
+            
+            if (saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Saving...';
+            }
+
+            try {
+                const csrf_token = document.querySelector('meta[name="csrf-token"]').content;
+                
+                const response = await fetch('/admin/drive/folder-config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrf_token
+                    },
+                    body: JSON.stringify({
+                        folder_id: parentFolderId || null
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert(data.message || 'Folder configuration saved successfully', 'success');
+                    await loadFolderConfig();
+                } else {
+                    showAlert(data.message || 'Failed to save folder configuration', 'error');
+                }
+            } catch (error) {
+                console.error('Save folder config error:', error);
+                showAlert('Failed to save configuration: ' + error.message, 'error');
+            } finally {
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = '💾 Save Folder Configuration';
+                }
+            }
+        }
+
         // Disconnect from Google Drive
         async function disconnect() {
             if (!confirm('Are you sure you want to disconnect? You will need to reconnect to upload photos.')) {
@@ -651,6 +776,9 @@ GOOGLE_OAUTH_REDIRECT_URI=postmessage</pre>
             
             // Check connection status
             checkStatus();
+            
+            // Load folder configuration
+            loadFolderConfig();
             
             // Initialize Google OAuth with retry logic
             let retryCount = 0;

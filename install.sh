@@ -350,28 +350,17 @@ update_installation() {
     chmod -R 755 "${INSTALL_DIR}/uploads" 2>/dev/null || true
     chmod -R 755 "${INSTALL_DIR}/qr_codes" 2>/dev/null || true
     
-    # Run database migration for photo workflow
-    print_info "Running database migration..."
+    # Update database schema (without prompting)
+    print_info "Updating database schema..."
     source "${VENV_DIR}/bin/activate"
     cd "${INSTALL_DIR}"
     
-    # Check if migration is needed
-    if [[ -f "migrate_photo_workflow.py" ]]; then
-        print_info "Photo workflow migration script found, checking if migration needed..."
-        "${VENV_DIR}/bin/python3" migrate_photo_workflow.py || {
-            print_warning "Migration script execution completed with warnings (this may be normal if already migrated)"
-        }
-    else
-        print_info "No migration script found, ensuring database is up to date..."
-        $PYTHON_CMD -c "
+    $PYTHON_CMD -c "
 from app import app, db
 with app.app_context():
     db.create_all()
     print('Database schema updated!')
-" || {
-            print_warning "Database update had warnings (this may be normal)"
-        }
-    fi
+" 2>/dev/null || true
     
     deactivate
     

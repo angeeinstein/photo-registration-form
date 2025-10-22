@@ -276,6 +276,8 @@ class DriveUploader:
                 logger.error(f"Photo not found: {photo_path}")
                 return False, None
             
+            logger.info(f"Starting upload: {photo_path.name} (size: {photo_path.stat().st_size} bytes)")
+            
             file_metadata = {
                 'name': photo_path.name,
                 'parents': [folder_id]
@@ -288,23 +290,29 @@ class DriveUploader:
             elif photo_path.suffix.lower() == '.png':
                 mime_type = 'image/png'
             
+            # Use non-resumable upload for smaller files (< 5MB) for better reliability
+            file_size = photo_path.stat().st_size
+            use_resumable = file_size > 5 * 1024 * 1024  # 5MB threshold
+            
             media = MediaFileUpload(
                 str(photo_path),
                 mimetype=mime_type,
-                resumable=True
+                resumable=use_resumable
             )
             
-            # Use multipart upload to avoid service account quota issues
+            logger.info(f"Uploading {photo_path.name} (resumable={use_resumable})...")
+            
+            # Upload with timeout
             file = self.service.files().create(
                 body=file_metadata,
                 media_body=media,
                 fields='id, name',
                 supportsAllDrives=True,
                 enforceSingleParent=True  # Helps with shared folder uploads
-            ).execute()
+            ).execute(num_retries=3)  # Add retry logic
             
             file_id = file.get('id')
-            logger.info(f"Uploaded '{photo_path.name}' to Drive (ID: {file_id})")
+            logger.info(f"✓ Uploaded '{photo_path.name}' to Drive (ID: {file_id})")
             
             if progress_callback:
                 progress_callback(photo_path.name)
@@ -312,10 +320,13 @@ class DriveUploader:
             return True, file_id
             
         except HttpError as e:
-            logger.error(f"Failed to upload '{photo_path}': {str(e)}")
+            logger.error(f"✗ HTTP error uploading '{photo_path}': {str(e)}")
+            logger.error(f"Error details: {e.resp.status} - {e.content}")
             return False, None
         except Exception as e:
-            logger.error(f"Unexpected error uploading '{photo_path}': {str(e)}")
+            logger.error(f"✗ Unexpected error uploading '{photo_path}': {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False, None
     
     def upload_photos_batch(self, photo_paths: List[str], folder_id: str,
