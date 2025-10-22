@@ -11,6 +11,7 @@ import os
 from io import BytesIO
 import base64
 from typing import Optional
+from PIL import Image
 
 # QR Code configuration
 QR_VERSION = 1  # Controls size (1-40, None for auto)
@@ -107,7 +108,8 @@ def create_qr_code(data: str, size: int = 300) -> PilImage:
     
     # Resize if needed (maintaining aspect ratio)
     if size:
-        img = img.resize((size, size), resample=PilImage.LANCZOS)
+        # Use Image.LANCZOS instead of PilImage.LANCZOS (Pillow 10+ compatibility)
+        img = img.resize((size, size), resample=Image.LANCZOS)
     
     return img
 
