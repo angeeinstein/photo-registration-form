@@ -332,6 +332,9 @@
                 <button id="startBtn" class="btn btn-primary" onclick="startProcessing()">
                     🚀 Start Processing
                 </button>
+                <a id="resultsBtn" href="{{ url_for('batch_results_page', batch_id=batch.id) }}" class="btn btn-primary" style="display: none; background: #4CAF50;">
+                    📧 View Results & Send Emails
+                </a>
                 <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
                     ← Back to Dashboard
                 </a>
@@ -347,7 +350,7 @@
     </div>
 
     <script>
-        const batchId = {{ batch.id }};
+    const batchId = JSON.parse('{{ batch.id | tojson | safe }}');
         let processingInterval = null;
         let isProcessing = false;
 
@@ -478,6 +481,10 @@
                         startBtn.textContent = '✅ Processing Complete';
                         startBtn.disabled = true;
                         
+                        // Show results button
+                        const resultsBtn = document.getElementById('resultsBtn');
+                        resultsBtn.style.display = 'inline-block';
+                        
                     } else if (data.status === 'error') {
                         isProcessing = false;
                         clearInterval(processingInterval);
@@ -521,6 +528,7 @@
                         updateStatus('Completed', 'Processing completed', '✅', 'completed');
                         document.getElementById('startBtn').textContent = '✅ Already Processed';
                         document.getElementById('startBtn').disabled = true;
+                        document.getElementById('resultsBtn').style.display = 'inline-block';
                         showAlert('This batch has already been processed.', 'info');
                     }
                 }

@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Batch Results: {{ batch.batch_name }} - Photo Registration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .header h1 {
+            color: #2d3748;
+            margin-bottom: 1rem;
+            font-size: 2rem;
+        }
+
+        .batch-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .summary-item {
+            padding: 1rem;
+            background: #f7fafc;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .summary-label {
+            font-size: 0.85rem;
+            color: #718096;
+            margin-bottom: 0.25rem;
+        }
+
+        .summary-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .action-bar {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            border: none;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: #718096;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4a5568;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .btn-info:hover {
+            background: #138496;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .results-card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: #f7fafc;
+        }
+
+        th {
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            color: #2d3748;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        tbody tr:hover {
+            background: #f7fafc;
+        }
+
+        .person-name {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .person-email {
+            font-size: 0.9rem;
+            color: #718096;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .badge-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .badge-info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .drive-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .drive-link:hover {
+            text-decoration: underline;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn-small {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+
+        .alert-warning {
+            background: #fff3cd;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border-left: 4px solid #17a2b8;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #718096;
+        }
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .spinner {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+
+            .batch-summary {
+                grid-template-columns: 1fr;
+            }
+
+            .action-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .btn {
+                width: 100%;
+            }
+
+            table {
+                font-size: 0.9rem;
+            }
+
+            th, td {
+                padding: 0.75rem 0.5rem;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Batch Results: {{ batch.batch_name }}</h1>
+            <div class="batch-summary">
+                <div class="summary-item">
+                    <div class="summary-label">Total Photos</div>
+                    <div class="summary-value">{{ batch.total_photos }}</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-label">People Found</div>
+                    <div class="summary-value">{{ batch.people_found }}</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-label">Unmatched Photos</div>
+                    <div class="summary-value">{{ batch.unmatched_photos }}</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-label">Processing Time</div>
+                    <div class="summary-value">
+                        {% if batch.processing_completed_at and batch.processing_started_at %}
+                            {{ ((batch.processing_completed_at - batch.processing_started_at).total_seconds() / 60) | round(1) }} min
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-bar">
+            <div>
+                <button id="sendAllBtn" class="btn btn-primary" onclick="sendAllEmails()" 
+                        {% if emails_sent_count >= people_count %}disabled{% endif %}>
+                    📧 Send All Emails ({{ people_count - emails_sent_count }} remaining)
+                </button>
+            </div>
+            <div>
+                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+                    ← Back to Dashboard
+                </a>
+            </div>
+        </div>
+
+        <div id="alertContainer"></div>
+
+        <div class="results-card">
+            {% if people and people|length > 0 %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Photos</th>
+                        <th>Google Drive</th>
+                        <th>Email Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for person in people %}
+                    <tr id="person-{{ person.id }}">
+                        <td>
+                            <div class="person-name">{{ person.first_name }} {{ person.last_name }}</div>
+                        </td>
+                        <td>
+                            <div class="person-email">{{ person.email }}</div>
+                        </td>
+                        <td>
+                            <strong>{{ person.photo_count }}</strong> photos
+                        </td>
+                        <td>
+                            {% if person.drive_share_link %}
+                                <a href="{{ person.drive_share_link }}" target="_blank" class="drive-link">
+                                    🔗 View in Drive
+                                </a>
+                            {% else %}
+                                <span class="badge badge-warning">No link</span>
+                            {% endif %}
+                        </td>
+                        <td id="status-{{ person.id }}">
+                            {% if person.photos_email_sent %}
+                                <span class="badge badge-success">✓ Sent</span>
+                                {% if person.photos_email_sent_at %}
+                                    <br><small style="color: #718096;">{{ person.photos_email_sent_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge badge-warning">Not sent</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="action-buttons">
+                                {% if person.drive_share_link %}
+                                    <button id="sendBtn-{{ person.id }}" 
+                                            class="btn btn-info btn-small" 
+                                            onclick="sendEmail(JSON.parse('{{ person.id | tojson | safe }}'))"
+                                            {% if person.photos_email_sent %}disabled{% endif %}>
+                                        {% if person.photos_email_sent %}
+                                            ✓ Sent
+                                        {% else %}
+                                            📧 Send
+                                        {% endif %}
+                                    </button>
+                                {% else %}
+                                    <button class="btn btn-secondary btn-small" disabled>
+                                        No link
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-state-icon">🤷</div>
+                <h2>No People Found</h2>
+                <p>No people were found in this batch. Make sure photos contain QR codes.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        const batchId = JSON.parse('{{ batch.id | tojson | safe }}');
+        const totalPeople = JSON.parse('{{ people_count | tojson | safe }}');
+
+        // Get CSRF token
+        function getCsrfToken() {
+            return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        }
+
+        // Show alert
+        function showAlert(message, type = 'info') {
+            const alertContainer = document.getElementById('alertContainer');
+            const alertClass = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : type === 'warning' ? 'alert-warning' : 'alert-info';
+            
+            const alert = document.createElement('div');
+            alert.className = `alert ${alertClass}`;
+            alert.innerHTML = message;
+            
+            alertContainer.innerHTML = '';
+            alertContainer.appendChild(alert);
+            
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                alert.style.opacity = '0';
+                setTimeout(() => alert.remove(), 300);
+            }, 5000);
+        }
+
+        // Send email to individual person
+        async function sendEmail(registrationId) {
+            const btn = document.getElementById(`sendBtn-${registrationId}`);
+            const originalText = btn.textContent;
+            
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner">⏳</span> Sending...';
+                
+                const response = await fetch(`/admin/photos/send-email/${registrationId}`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCsrfToken()
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Update status badge
+                    const statusCell = document.getElementById(`status-${registrationId}`);
+                    statusCell.innerHTML = '<span class="badge badge-success">✓ Sent</span><br><small style="color: #718096;">Just now</small>';
+                    
+                    // Update button
+                    btn.textContent = '✓ Sent';
+                    
+                    showAlert(`✓ Email sent successfully to ${data.person_name}`, 'success');
+                    
+                    // Update "Send All" button count
+                    updateSendAllButton();
+                    
+                } else {
+                    throw new Error(data.error || 'Failed to send email');
+                }
+                
+            } catch (error) {
+                console.error('Error sending email:', error);
+                showAlert(`Failed to send email: ${error.message}`, 'error');
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        // Send emails to all unsent people
+        async function sendAllEmails() {
+            if (!confirm('Send emails to all people who haven\'t received them yet?')) {
+                return;
+            }
+            
+            const btn = document.getElementById('sendAllBtn');
+            const originalText = btn.textContent;
+            
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner">⏳</span> Sending...';
+                
+                const response = await fetch('/admin/photos/send-all/{{ batch.id }}', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCsrfToken()
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert(`✓ Successfully sent ${data.emails_sent} emails!`, 'success');
+                    
+                    // Reload page to show updated statuses
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                    
+                } else {
+                    throw new Error(data.error || 'Failed to send emails');
+                }
+                
+            } catch (error) {
+                console.error('Error sending emails:', error);
+                showAlert(`Failed to send emails: ${error.message}`, 'error');
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        // Update "Send All" button with remaining count
+        function updateSendAllButton() {
+            let sentCount = 0;
+            
+            // Count how many are sent
+            document.querySelectorAll('[id^="status-"]').forEach(statusCell => {
+                if (statusCell.textContent.includes('Sent')) {
+                    sentCount++;
+                }
+            });
+            
+            const remaining = totalPeople - sentCount;
+            const btn = document.getElementById('sendAllBtn');
+            
+            if (remaining <= 0) {
+                btn.disabled = true;
+                btn.textContent = '✓ All Emails Sent';
+            } else {
+                btn.textContent = `📧 Send All Emails (${remaining} remaining)`;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -471,3 +471,71 @@ def test_email_configuration(account=None, test_email=None) -> bool:
         html_body=html_body,
         text_body="This is a test email from your Photo Registration Form application."
     )
+
+
+def send_photo_delivery_email(
+    to_email: str,
+    first_name: str,
+    drive_link: str,
+    photo_count: int,
+    event_name: str = "our event",
+    retention_days: int = 30,
+    organization_name: str = "Photo Registration Team",
+    account=None
+) -> bool:
+    """
+    Send photo delivery email with Google Drive link
+    
+    Args:
+        to_email: Recipient email address
+        first_name: Recipient's first name
+        drive_link: Google Drive folder link
+        photo_count: Number of photos in the folder
+        event_name: Name of the event
+        retention_days: Number of days photos will be available
+        organization_name: Name of the organization
+        account: EmailAccount object (optional, uses default if not provided)
+    
+    Returns:
+        bool: True if email sent successfully
+    """
+    from datetime import datetime, timedelta
+    
+    # Try database account first, fall back to env
+    if account:
+        sender = create_email_sender_from_account(account)
+    else:
+        sender = create_email_sender_from_env()
+    
+    if not sender:
+        logger.error("Email sender not configured")
+        return False
+    
+    template_path = os.path.join(
+        os.path.dirname(__file__),
+        'email_templates',
+        'photos_delivery_email.html'
+    )
+    
+    # Calculate expiry date
+    expiry_date = (datetime.now() + timedelta(days=retention_days)).strftime('%B %d, %Y')
+    
+    variables = {
+        'first_name': first_name,
+        'drive_link': drive_link,
+        'photo_count': photo_count,
+        'event_name': event_name,
+        'retention_days': retention_days,
+        'expiry_date': expiry_date,
+        'organization_name': organization_name
+    }
+    
+    # Get subject from environment or use default
+    subject = os.getenv('PHOTOS_DELIVERY_SUBJECT', f'📸 Your Photos from {event_name} Are Ready!')
+    
+    return sender.send_template_email(
+        to_email=to_email,
+        template_path=template_path,
+        subject=subject,
+        variables=variables
+    )

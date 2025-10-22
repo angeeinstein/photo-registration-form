@@ -184,9 +184,9 @@
                                     👁️ View Progress
                                 </a>
                                 {% elif batch.status == 'completed' %}
-                                <a href="{{ url_for('process_photo_batch_page', batch_id=batch.id) }}" 
+                                <a href="{{ url_for('batch_results_page', batch_id=batch.id) }}" 
                                    class="btn btn-info" style="text-decoration: none;">
-                                    📊 View Results
+                                    📊 View Results & Send Emails
                                 </a>
                                 {% endif %}
                             </div>

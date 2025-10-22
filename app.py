@@ -1363,6 +1363,176 @@ def get_processing_status(batch_id):
             'error': str(e)
         }), 500
 
+@app.route('/admin/photos/batch-results/<int:batch_id>')
+@login_required
+def batch_results_page(batch_id):
+    """Display batch results with email sending interface"""
+    batch = PhotoBatch.query.get_or_404(batch_id)
+    
+    # Get all people found in this batch (registrations with photos)
+    people = db.session.query(Registration).join(Photo).filter(
+        Photo.batch_id == batch_id,
+        Photo.registration_id.isnot(None)
+    ).distinct().all()
+    
+    # Count emails sent
+    emails_sent_count = sum(1 for p in people if p.photos_email_sent)
+    
+    return render_template('admin_batch_results.html',
+                          batch=batch,
+                          people=people,
+                          people_count=len(people),
+                          emails_sent_count=emails_sent_count)
+
+@app.route('/admin/photos/send-email/<int:registration_id>', methods=['POST'])
+@login_required
+def send_individual_photo_email(registration_id):
+    """Send photo delivery email to a single person"""
+    try:
+        from send_email import send_photo_delivery_email, create_email_sender_from_account
+        
+        person = Registration.query.get_or_404(registration_id)
+        
+        # Check if person has Drive link
+        if not person.drive_share_link:
+            return jsonify({
+                'success': False,
+                'error': 'No Google Drive link available for this person'
+            }), 400
+        
+        # Check if email already sent
+        if person.photos_email_sent:
+            return jsonify({
+                'success': False,
+                'error': 'Email already sent to this person'
+            }), 400
+        
+        # Get default email account
+        email_account = EmailAccount.query.filter_by(is_default=True, is_active=True).first()
+        
+        # Get event name from settings or use default
+        event_name = os.getenv('EVENT_NAME', 'our event')
+        organization_name = os.getenv('ORGANIZATION_NAME', 'Photo Registration Team')
+        retention_days = int(os.getenv('PHOTO_RETENTION_DAYS', '30'))
+        
+        # Send email
+        success = send_photo_delivery_email(
+            to_email=person.email,
+            first_name=person.first_name,
+            drive_link=person.drive_share_link,
+            photo_count=person.photo_count,
+            event_name=event_name,
+            retention_days=retention_days,
+            organization_name=organization_name,
+            account=email_account
+        )
+        
+        if success:
+            # Update tracking
+            person.photos_email_sent = True
+            person.photos_email_sent_at = datetime.utcnow()
+            db.session.commit()
+            
+            return jsonify({
+                'success': True,
+                'person_name': f'{person.first_name} {person.last_name}'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to send email'
+            }), 500
+            
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f'Error sending photo email: {str(e)}')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/admin/photos/send-all/<int:batch_id>', methods=['POST'])
+@login_required
+def send_all_photo_emails(batch_id):
+    """Send photo delivery emails to all unsent people in a batch"""
+    try:
+        from send_email import send_photo_delivery_email
+        
+        batch = PhotoBatch.query.get_or_404(batch_id)
+        
+        # Get all people who haven't received emails yet
+        people = db.session.query(Registration).join(Photo).filter(
+            Photo.batch_id == batch_id,
+            Photo.registration_id.isnot(None),
+            Registration.photos_email_sent == False,
+            Registration.drive_share_link.isnot(None)
+        ).distinct().all()
+        
+        if not people:
+            return jsonify({
+                'success': False,
+                'error': 'No people to send emails to'
+            }), 400
+        
+        # Get default email account
+        email_account = EmailAccount.query.filter_by(is_default=True, is_active=True).first()
+        
+        # Get event settings
+        event_name = os.getenv('EVENT_NAME', 'our event')
+        organization_name = os.getenv('ORGANIZATION_NAME', 'Photo Registration Team')
+        retention_days = int(os.getenv('PHOTO_RETENTION_DAYS', '30'))
+        
+        # Send emails
+        sent_count = 0
+        failed = []
+        
+        for person in people:
+            try:
+                success = send_photo_delivery_email(
+                    to_email=person.email,
+                    first_name=person.first_name,
+                    drive_link=person.drive_share_link,
+                    photo_count=person.photo_count,
+                    event_name=event_name,
+                    retention_days=retention_days,
+                    organization_name=organization_name,
+                    account=email_account
+                )
+                
+                if success:
+                    person.photos_email_sent = True
+                    person.photos_email_sent_at = datetime.utcnow()
+                    sent_count += 1
+                else:
+                    failed.append(person.email)
+                    
+            except Exception as e:
+                app.logger.error(f'Failed to send email to {person.email}: {str(e)}')
+                failed.append(person.email)
+        
+        # Commit all updates
+        db.session.commit()
+        
+        result = {
+            'success': True,
+            'emails_sent': sent_count,
+            'total_attempted': len(people)
+        }
+        
+        if failed:
+            result['failed'] = failed
+            result['message'] = f'Sent {sent_count}/{len(people)} emails. {len(failed)} failed.'
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f'Error sending batch emails: {str(e)}')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # Initialize database
 # Initialize database
 def init_db():
