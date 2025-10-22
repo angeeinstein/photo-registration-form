@@ -55,7 +55,7 @@ class PhotoProcessor:
         log_entry = ProcessingLog(
             batch_id=self.batch_id,
             action=action,
-            details=details,
+            message=details,  # Field is 'message' not 'details'
             timestamp=datetime.utcnow(),
             level=level
         )
@@ -147,7 +147,7 @@ class PhotoProcessor:
                     
                     # Mark photos as uploaded to Drive
                     for photo in self.current_person_photos:
-                        photo.drive_uploaded = True
+                        photo.uploaded_to_drive = True  # Correct field name
                     
                     db.session.commit()
                     
@@ -261,6 +261,7 @@ class PhotoProcessor:
         start_time = datetime.utcnow()
         
         try:
+            self.batch.processing_started_at = start_time
             self._update_batch_status(
                 status="processing",
                 current_action="Starting batch processing...",
@@ -279,12 +280,15 @@ class PhotoProcessor:
             
             # Initialize Drive uploader if available
             drive_uploader = None
+            drive_context = None
             if DriveUploader is not None:
                 try:
-                    drive_uploader = DriveUploader().__enter__()
+                    drive_context = DriveUploader()
+                    drive_uploader = drive_context.__enter__()
                 except Exception as e:
                     # Log but continue processing locally
                     self._log_action('drive_init_failed', f'Failed to initialize Drive uploader: {str(e)}', level='warning')
+                    drive_context = None
 
             # Process each photo sequentially
             for idx, photo in enumerate(photos, 1):
@@ -351,9 +355,9 @@ class PhotoProcessor:
                 self._save_current_person(drive_uploader=drive_uploader)
             finally:
                 # Cleanup Drive uploader context
-                if drive_uploader and DriveUploader is not None:
+                if drive_context is not None:
                     try:
-                        DriveUploader().__exit__(None, None, None)
+                        drive_context.__exit__(None, None, None)
                     except Exception:
                         pass
             
@@ -370,7 +374,10 @@ class PhotoProcessor:
                 'success': True
             }
             
-            # Update batch status
+            # Update batch status and metrics
+            self.batch.people_found = self.people_found
+            self.batch.unmatched_photos = len(self.unmatched_photos)
+            self.batch.processing_completed_at = end_time
             self._update_batch_status(
                 status="completed",
                 current_action=f"Processing complete: {self.people_found} people, {len(self.unmatched_photos)} unmatched photos"
@@ -384,6 +391,9 @@ class PhotoProcessor:
             return metrics
             
         except Exception as e:
+            self.batch.error_message = str(e)
+            self.batch.people_found = self.people_found
+            self.batch.unmatched_photos = len(self.unmatched_photos)
             self._update_batch_status(
                 status="error",
                 current_action=f"Processing failed: {str(e)}"
@@ -398,7 +408,8 @@ class PhotoProcessor:
                 'success': False,
                 'error': str(e),
                 'photos_processed': self.photos_processed,
-                'people_found': self.people_found
+                'people_found': self.people_found,
+                'unmatched_photos': len(self.unmatched_photos)
             }
     
     def get_progress(self) -> Dict:
