@@ -910,12 +910,34 @@ def admin_drive_test_connection():
             
             if parent_folder_id:
                 try:
+                    # First, try to get folder metadata
                     folder = service.files().get(
                         fileId=parent_folder_id,
-                        fields='id, name, mimeType'
+                        fields='id, name, mimeType, capabilities, owners, permissions'
                     ).execute()
                     
-                    folder_message = f"Parent folder access verified: '{folder.get('name')}'"
+                    # Verify it's actually a folder
+                    if folder.get('mimeType') != 'application/vnd.google-apps.folder':
+                        return jsonify({
+                            'success': False,
+                            'error': f'❌ The provided ID is not a folder. It\'s a {folder.get("mimeType")}.\n\nPlease provide a folder ID, not a file ID.'
+                        }), 400
+                    
+                    # Check if we can create files in this folder
+                    capabilities = folder.get('capabilities', {})
+                    can_add_children = capabilities.get('canAddChildren', False)
+                    
+                    if not can_add_children:
+                        config = drive_manager.get_config()
+                        service_email = config.get('service_account_email', 'unknown')
+                        
+                        return jsonify({
+                            'success': False,
+                            'error': f'❌ Service account cannot create files in this folder.\n\n📧 Service Account: {service_email}\n\n✅ To fix this:\n1. Open Google Drive in your browser\n2. Find the folder: {folder.get("name")}\n3. Right-click → Share\n4. Add the service account email above\n5. Set permission to "Editor" (not Viewer!)\n6. Uncheck "Notify people"\n7. Click Share\n8. Wait 30 seconds for permissions to propagate\n9. Try testing again'
+                        }), 400
+                    
+                    folder_message = f"✅ Parent folder access verified: '{folder.get('name')}' (can create files)"
+                    
                 except Exception as folder_error:
                     error_msg = str(folder_error)
                     
@@ -923,16 +945,21 @@ def admin_drive_test_connection():
                     config = drive_manager.get_config()
                     service_email = config.get('service_account_email', 'unknown')
                     
-                    # Provide helpful error message
-                    if 'File not found' in error_msg or 'notFound' in error_msg:
+                    # Provide helpful error message based on error type
+                    if 'File not found' in error_msg or 'notFound' in error_msg or '404' in error_msg:
                         return jsonify({
                             'success': False,
-                            'error': f'❌ Cannot access parent folder (File not found).\n\n📧 Service Account Email: {service_email}\n\n✅ To fix this:\n1. Copy the service account email above\n2. Go to Google Drive and open your parent folder\n3. Click Share button\n4. Paste the service account email\n5. Set permission to "Editor"\n6. Click Share\n7. Try testing again'
+                            'error': f'❌ Cannot access folder with ID: {parent_folder_id}\n\n📧 Service Account: {service_email}\n\n🔍 Possible causes:\n1. The folder ID is incorrect\n2. The folder hasn\'t been shared with the service account\n3. The folder was deleted\n\n✅ To fix:\n1. Verify the folder ID is correct (copy from Drive URL)\n2. Open the folder in Google Drive\n3. Click Share button\n4. Add the service account email above\n5. Set permission to "Editor"\n6. Click Share\n7. Try again'
+                        }), 400
+                    elif 'insufficientPermissions' in error_msg or 'Permission denied' in error_msg:
+                        return jsonify({
+                            'success': False,
+                            'error': f'❌ Permission denied to access folder.\n\n📧 Service Account: {service_email}\n\nThe service account needs "Editor" permissions on this folder.\n\n✅ To fix:\n1. Open the folder in Google Drive\n2. Click Share button\n3. Add the service account email: {service_email}\n4. Change permission to "Editor" (not "Viewer"!)\n5. Click Share\n6. Try again'
                         }), 400
                     else:
                         return jsonify({
                             'success': False,
-                            'error': f'Cannot access parent folder: {error_msg}\n\nService Account: {service_email}\n\nMake sure the folder is shared with this service account email with "Editor" permissions.'
+                            'error': f'Cannot access parent folder: {error_msg}\n\n📧 Service Account: {service_email}\n\nMake sure:\n1. The folder ID is correct\n2. The folder is shared with the service account with "Editor" permissions\n3. You waited 30 seconds after sharing'
                         }), 400
             else:
                 folder_message = "Using root folder (My Drive)"

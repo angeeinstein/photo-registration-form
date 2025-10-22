@@ -381,7 +381,12 @@
                 {% if drive_info %}
                 <dl class="credentials-info">
                     <dt>Service Account Email:</dt>
-                    <dd>{{ drive_info.service_account_email }}</dd>
+                    <dd style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span id="serviceEmail">{{ drive_info.service_account_email }}</span>
+                        <button onclick="copyServiceEmail()" style="padding: 0.25rem 0.75rem; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem;">
+                            📋 Copy
+                        </button>
+                    </dd>
                     
                     <dt>Project ID:</dt>
                     <dd>{{ drive_info.project_id }}</dd>
@@ -573,6 +578,22 @@
     </div>
 
     <script>
+        function copyServiceEmail() {
+            const email = document.getElementById('serviceEmail').textContent;
+            navigator.clipboard.writeText(email).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✓ Copied!';
+                btn.style.background = '#28a745';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '#667eea';
+                }, 2000);
+            }).catch(err => {
+                alert('Failed to copy: ' + err);
+            });
+        }
+
         function updateFileName(input) {
             const fileLabel = document.getElementById('fileLabel');
             const fileName = document.getElementById('fileName');
