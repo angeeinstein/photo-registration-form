@@ -6,6 +6,7 @@ from flask_limiter.util import get_remote_address
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import os
+import json
 from dotenv import load_dotenv
 from functools import wraps
 from send_email import send_confirmation_email, send_photos_email, create_email_sender_from_env, test_email_configuration
@@ -788,6 +789,156 @@ def admin_delete_all_registrations():
         flash(f'Error deleting registrations: {str(e)}', 'error')
     
     return redirect(url_for('admin_dashboard'))
+
+# Google Drive Settings Routes
+@app.route('/admin/drive/settings', methods=['GET', 'POST'])
+@login_required
+def admin_drive_settings():
+    """Google Drive API configuration"""
+    from drive_credentials_manager import DriveCredentialsManager
+    
+    drive_manager = DriveCredentialsManager()
+    
+    if request.method == 'POST':
+        try:
+            # Check if file was uploaded
+            if 'credentials_file' not in request.files:
+                flash('No file uploaded', 'error')
+                return redirect(url_for('admin_drive_settings'))
+            
+            file = request.files['credentials_file']
+            
+            if file.filename == '':
+                flash('No file selected', 'error')
+                return redirect(url_for('admin_drive_settings'))
+            
+            if not file.filename.endswith('.json'):
+                flash('Invalid file type. Please upload a JSON file', 'error')
+                return redirect(url_for('admin_drive_settings'))
+            
+            # Parse JSON content
+            try:
+                credentials_data = json.loads(file.read().decode('utf-8'))
+            except json.JSONDecodeError:
+                flash('Invalid JSON file. Please check the file format', 'error')
+                return redirect(url_for('admin_drive_settings'))
+            
+            # Get additional settings
+            parent_folder_id = request.form.get('parent_folder_id', '').strip() or None
+            folder_name_format = request.form.get('folder_name_format', 'FirstName_LastName')
+            
+            # Save credentials
+            drive_manager.save_credentials(
+                credentials_data,
+                parent_folder_id=parent_folder_id,
+                folder_name_format=folder_name_format
+            )
+            
+            flash('Google Drive credentials saved successfully! You can now test the connection.', 'success')
+            return redirect(url_for('admin_drive_settings'))
+            
+        except ValueError as e:
+            flash(f'Invalid credentials: {str(e)}', 'error')
+            return redirect(url_for('admin_drive_settings'))
+        except Exception as e:
+            app.logger.error(f'Error saving Drive credentials: {str(e)}')
+            flash(f'Error saving credentials: {str(e)}', 'error')
+            return redirect(url_for('admin_drive_settings'))
+    
+    # GET request - show settings page
+    drive_configured = drive_manager.is_configured()
+    drive_info = drive_manager.get_config() if drive_configured else None
+    
+    return render_template('admin_drive_settings.html',
+                         drive_configured=drive_configured,
+                         drive_info=drive_info)
+
+@app.route('/admin/drive/delete-credentials', methods=['POST'])
+@login_required
+def admin_drive_delete_credentials():
+    """Delete Google Drive credentials"""
+    from drive_credentials_manager import DriveCredentialsManager
+    
+    try:
+        drive_manager = DriveCredentialsManager()
+        drive_manager.delete_credentials()
+        flash('Google Drive credentials removed successfully', 'success')
+    except Exception as e:
+        app.logger.error(f'Error deleting Drive credentials: {str(e)}')
+        flash(f'Error removing credentials: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_drive_settings'))
+
+@app.route('/admin/drive/test-connection', methods=['POST'])
+@login_required
+def admin_drive_test_connection():
+    """Test Google Drive API connection"""
+    from drive_credentials_manager import DriveCredentialsManager
+    
+    try:
+        drive_manager = DriveCredentialsManager()
+        
+        if not drive_manager.is_configured():
+            return jsonify({
+                'success': False,
+                'error': 'Google Drive is not configured'
+            }), 400
+        
+        # Get credentials path
+        creds_path = drive_manager.get_credentials_path()
+        
+        try:
+            from google.oauth2 import service_account
+            from googleapiclient.discovery import build
+            
+            # Create credentials
+            credentials = service_account.Credentials.from_service_account_file(
+                creds_path,
+                scopes=['https://www.googleapis.com/auth/drive.file']
+            )
+            
+            # Build Drive service
+            service = build('drive', 'v3', credentials=credentials)
+            
+            # Test by getting user info
+            about = service.about().get(fields='user').execute()
+            user_email = about.get('user', {}).get('emailAddress', 'Unknown')
+            
+            # Test parent folder access if configured
+            config = drive_manager.get_config()
+            parent_folder_id = config.get('parent_folder_id')
+            
+            if parent_folder_id:
+                try:
+                    folder = service.files().get(
+                        fileId=parent_folder_id,
+                        fields='id, name, mimeType'
+                    ).execute()
+                    
+                    folder_message = f"Parent folder access verified: '{folder.get('name')}'"
+                except Exception as folder_error:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Cannot access parent folder: {str(folder_error)}. Make sure the service account has been granted access to this folder.'
+                    }), 400
+            else:
+                folder_message = "Using root folder (My Drive)"
+            
+            return jsonify({
+                'success': True,
+                'message': f'Connection successful! Service account: {user_email}. {folder_message}'
+            })
+            
+        finally:
+            # Cleanup temporary credentials
+            drive_manager.cleanup_temp_credentials()
+            
+    except Exception as e:
+        app.logger.error(f'Drive connection test failed: {str(e)}')
+        return jsonify({
+            'success': False,
+            'error': f'Connection failed: {str(e)}'
+        }), 500
 
 # Email Account Management Routes
 @app.route('/admin/email-accounts')

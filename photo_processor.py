@@ -12,6 +12,10 @@ import logging
 
 from qr_detector import QRDetector
 from models import db, PhotoBatch, Photo, Registration, ProcessingLog
+try:
+    from drive_uploader import DriveUploader
+except Exception:
+    DriveUploader = None
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -72,16 +76,19 @@ class PhotoProcessor:
         
         db.session.commit()
         
-    def _save_current_person(self):
-        """Save current person's photos to their folder"""
+    def _save_current_person(self, drive_uploader=None):
+        """Save current person's photos to their folder and upload to Drive"""
         if not self.current_person or not self.current_person_photos:
             return
+        
+        person_name = f"{self.current_person.first_name} {self.current_person.last_name}"
         
         # Create person's directory
         person_dir = self.processed_dir / str(self.current_person.id)
         person_dir.mkdir(parents=True, exist_ok=True)
         
         # Copy photos to person's folder
+        photo_paths = []
         for photo in self.current_person_photos:
             src_path = self.batch_dir / photo.filename
             dst_path = person_dir / photo.filename
@@ -89,11 +96,12 @@ class PhotoProcessor:
             try:
                 shutil.copy2(src_path, dst_path)
                 photo.processed = True
+                photo_paths.append(str(dst_path))
                 db.session.commit()
                 
                 self._log_action(
                     "photo_copied",
-                    f"Copied {photo.filename} to {self.current_person.first_name} {self.current_person.last_name}'s folder"
+                    f"Copied {photo.filename} to {person_name}'s folder"
                 )
             except Exception as e:
                 self._log_action(
@@ -107,14 +115,69 @@ class PhotoProcessor:
         db.session.commit()
         
         self._log_action(
-            "person_completed",
-            f"{self.current_person.first_name} {self.current_person.last_name}: {len(self.current_person_photos)} photos saved"
+            "person_photos_saved",
+            f"{person_name}: {len(self.current_person_photos)} photos saved locally"
         )
         
-    def _start_new_person(self, registration: Registration, qr_photo: Photo):
-        """Start tracking a new person"""
+        # Upload to Google Drive if configured
+        if drive_uploader and photo_paths:
+            try:
+                self._update_batch_status(
+                    current_action=f"Uploading {person_name}'s photos to Google Drive..."
+                )
+                
+                def upload_callback(action, details):
+                    """Callback for Drive upload progress"""
+                    self._update_batch_status(current_action=details)
+                    self._log_action(f"drive_{action}", details)
+                
+                # Upload photos to Drive
+                result = drive_uploader.upload_person_photos(
+                    self.current_person.first_name,
+                    self.current_person.last_name,
+                    photo_paths,
+                    progress_callback=upload_callback
+                )
+                
+                if result['success']:
+                    # Store Drive info in database
+                    self.current_person.drive_folder_id = result['folder_id']
+                    self.current_person.drive_share_link = result['share_link']
+                    
+                    # Mark photos as uploaded to Drive
+                    for photo in self.current_person_photos:
+                        photo.drive_uploaded = True
+                    
+                    db.session.commit()
+                    
+                    self._log_action(
+                        "drive_upload_success",
+                        f"{person_name}: Uploaded to Drive - {result['photos_uploaded']} photos, "
+                        f"Share link: {result['share_link']}"
+                    )
+                else:
+                    self._log_action(
+                        "drive_upload_failed",
+                        f"{person_name}: Drive upload failed - {result.get('error', 'Unknown error')}",
+                        level="error"
+                    )
+                    
+            except Exception as e:
+                self._log_action(
+                    "drive_upload_error",
+                    f"{person_name}: Drive upload error - {str(e)}",
+                    level="error"
+                )
+        
+        self._log_action(
+            "person_completed",
+            f"{person_name}: Processing complete"
+        )
+        
+    def _start_new_person(self, registration: Registration, qr_photo: Photo, drive_uploader=None):
+        """Start tracking a new person. Saves previous person (uploads to Drive if available)."""
         # Save previous person first
-        self._save_current_person()
+        self._save_current_person(drive_uploader=drive_uploader)
         
         # Start new person
         self.current_person = registration
@@ -213,6 +276,15 @@ class PhotoProcessor:
             
             self._log_action("photos_sorted", f"Processing {total_photos} photos in filename order")
             
+            # Initialize Drive uploader if available
+            drive_uploader = None
+            if DriveUploader is not None:
+                try:
+                    drive_uploader = DriveUploader().__enter__()
+                except Exception as e:
+                    # Log but continue processing locally
+                    self._log_action('drive_init_failed', f'Failed to initialize Drive uploader: {str(e)}', level='warning')
+
             # Process each photo sequentially
             for idx, photo in enumerate(photos, 1):
                 self.photos_processed = idx
@@ -248,7 +320,7 @@ class PhotoProcessor:
                     registration = self._match_registration(qr_data)
                     
                     if registration:
-                        self._start_new_person(registration, photo)
+                        self._start_new_person(registration, photo, drive_uploader=drive_uploader)
                         self._update_batch_status(
                             current_action=f"Started processing photos for {registration.first_name} {registration.last_name}"
                         )
@@ -273,8 +345,16 @@ class PhotoProcessor:
                         f"Processed {idx}/{total_photos} photos ({progress_pct}%) - {self.people_found} people found"
                     )
             
-            # Save last person's photos
-            self._save_current_person()
+            # Save last person's photos (upload to Drive if configured)
+            try:
+                self._save_current_person(drive_uploader=drive_uploader)
+            finally:
+                # Cleanup Drive uploader context
+                if drive_uploader and DriveUploader is not None:
+                    try:
+                        DriveUploader().__exit__(None, None, None)
+                    except Exception:
+                        pass
             
             # Calculate final metrics
             end_time = datetime.utcnow()

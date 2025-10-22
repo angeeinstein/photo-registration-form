@@ -128,6 +128,8 @@ install_dependencies() {
                 python3-venv \
                 python3-dev \
                 build-essential \
+                libssl-dev \
+                libffi-dev \
                 git \
                 curl \
                 wget \
@@ -1156,9 +1158,16 @@ fresh_installation() {
     print_info "Installing Python dependencies..."
     source "${VENV_DIR}/bin/activate"
     pip install --upgrade pip
-    pip install -r requirements.txt || {
-        print_error "Failed to install Python dependencies"
-        exit 1
+    # Install wheel and setuptools first to help with binary builds
+    pip install --upgrade setuptools wheel
+    pip install --no-cache-dir -r requirements.txt || {
+        print_warning "Initial pip install failed, retrying with --no-binary for cryptography"
+        # Try fallback for cryptography build issues
+        pip install --no-binary :all: cryptography || true
+        pip install --no-cache-dir -r requirements.txt || {
+            print_error "Failed to install Python dependencies"
+            exit 1
+        }
     }
     deactivate
     

@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Google Drive Settings - Photo Registration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .header h1 {
+            color: #2d3748;
+            margin-bottom: 0.5rem;
+            font-size: 2rem;
+        }
+
+        .header p {
+            color: #718096;
+            font-size: 0.95rem;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 1rem;
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .status-badge.active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-badge.inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        h2 {
+            color: #2d3748;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
+        .info-box {
+            background: #e6f4ea;
+            border-left: 4px solid #1e7e34;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            border-radius: 4px;
+        }
+
+        .info-box.warning {
+            background: #fff3cd;
+            border-left-color: #856404;
+        }
+
+        .info-box.error {
+            background: #f8d7da;
+            border-left-color: #721c24;
+        }
+
+        .info-box h3 {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            color: #2d3748;
+        }
+
+        .info-box p, .info-box ul {
+            font-size: 0.9rem;
+            color: #2d3748;
+            line-height: 1.6;
+        }
+
+        .info-box ul {
+            margin-left: 1.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            color: #2d3748;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="file"],
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input[type="text"]:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            opacity: 0;
+            position: absolute;
+            z-index: -1;
+        }
+
+        .file-input-label {
+            display: block;
+            padding: 1rem;
+            background: #f7fafc;
+            border: 2px dashed #cbd5e0;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .file-input-label:hover {
+            background: #edf2f7;
+            border-color: #667eea;
+        }
+
+        .file-input-label.has-file {
+            background: #e6f4ea;
+            border-color: #1e7e34;
+            border-style: solid;
+        }
+
+        .file-name {
+            display: block;
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+            color: #2d3748;
+            font-weight: 600;
+        }
+
+        .help-text {
+            font-size: 0.85rem;
+            color: #718096;
+            margin-top: 0.25rem;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #2d3748;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e0;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .credentials-info {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .credentials-info dt {
+            font-weight: 600;
+            color: #2d3748;
+            margin-top: 0.5rem;
+        }
+
+        .credentials-info dd {
+            color: #718096;
+            margin-left: 0;
+            margin-bottom: 0.5rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .setup-steps {
+            counter-reset: step-counter;
+            list-style: none;
+            padding: 0;
+        }
+
+        .setup-steps li {
+            counter-increment: step-counter;
+            margin-bottom: 1.5rem;
+            padding-left: 3rem;
+            position: relative;
+        }
+
+        .setup-steps li::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 2rem;
+            height: 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .setup-steps li strong {
+            display: block;
+            color: #2d3748;
+            margin-bottom: 0.25rem;
+        }
+
+        .setup-steps li p {
+            color: #718096;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .setup-steps li code {
+            background: #f7fafc;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="{{ url_for('admin_settings') }}" class="back-link">← Back to Settings</a>
+
+        <div class="header">
+            <h1>🔐 Google Drive API Configuration</h1>
+            <p>Upload your service account credentials to enable Google Drive integration</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Current Status -->
+        <div class="card">
+            <h2>📊 Current Status</h2>
+            {% if drive_configured %}
+                <span class="status-badge active">✓ Google Drive Configured</span>
+                
+                {% if drive_info %}
+                <dl class="credentials-info">
+                    <dt>Service Account Email:</dt>
+                    <dd>{{ drive_info.service_account_email }}</dd>
+                    
+                    <dt>Project ID:</dt>
+                    <dd>{{ drive_info.project_id }}</dd>
+                    
+                    <dt>Uploaded:</dt>
+                    <dd>{{ drive_info.uploaded_at }}</dd>
+                    
+                    <dt>Parent Folder ID:</dt>
+                    <dd>{{ drive_info.parent_folder_id or 'Root folder (My Drive)' }}</dd>
+                </dl>
+                {% endif %}
+                
+                <div class="button-group">
+                    <button onclick="testConnection()" class="btn btn-primary">🔍 Test Connection</button>
+                    <button onclick="showDeleteModal()" class="btn btn-danger">🗑️ Remove Credentials</button>
+                </div>
+            {% else %}
+                <span class="status-badge inactive">✗ Not Configured</span>
+                <p style="color: #718096; margin-top: 1rem;">
+                    Google Drive integration is not configured. Upload your service account JSON file below to enable automatic photo uploads to Google Drive.
+                </p>
+            {% endif %}
+        </div>
+
+        <!-- Upload Form -->
+        <div class="card">
+            <h2>📤 Upload Service Account Credentials</h2>
+            
+            <div class="info-box warning">
+                <h3>⚠️ Security Notice</h3>
+                <p>The service account JSON file contains sensitive credentials. It will be encrypted and stored securely on the server. Never share this file publicly.</p>
+            </div>
+
+            <form method="POST" action="{{ url_for('admin_drive_settings') }}" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                
+                <div class="form-group">
+                    <label>Service Account JSON File</label>
+                    <div class="file-input-wrapper">
+                        <input type="file" name="credentials_file" id="credentialsFile" accept=".json" required onchange="updateFileName(this)">
+                        <label for="credentialsFile" class="file-input-label" id="fileLabel">
+                            📁 Click to select service account JSON file
+                            <span class="file-name" id="fileName"></span>
+                        </label>
+                    </div>
+                    <span class="help-text">Upload the JSON file downloaded from Google Cloud Console</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="parentFolderId">Parent Folder ID (Optional)</label>
+                    <input type="text" 
+                           id="parentFolderId" 
+                           name="parent_folder_id" 
+                           placeholder="e.g., 1a2b3c4d5e6f7g8h9i0j"
+                           value="{{ drive_info.parent_folder_id if drive_info else '' }}">
+                    <span class="help-text">
+                        The Google Drive folder ID where event folders will be created. Leave empty to use root (My Drive).
+                        Find the folder ID in the URL: <code>drive.google.com/drive/folders/<strong>FOLDER_ID_HERE</strong></code>
+                    </span>
+                </div>
+
+                <div class="form-group">
+                    <label for="folderNameFormat">Folder Name Format</label>
+                    <select id="folderNameFormat" name="folder_name_format">
+                        <option value="FirstName_LastName" {% if drive_info and drive_info.folder_name_format == 'FirstName_LastName' %}selected{% endif %}>
+                            FirstName_LastName (e.g., John_Doe)
+                        </option>
+                        <option value="LastName_FirstName" {% if drive_info and drive_info.folder_name_format == 'LastName_FirstName' %}selected{% endif %}>
+                            LastName_FirstName (e.g., Doe_John)
+                        </option>
+                        <option value="Event_YYYYMMDD/FirstName_LastName" {% if drive_info and drive_info.folder_name_format == 'Event_YYYYMMDD/FirstName_LastName' %}selected{% endif %}>
+                            Event_YYYYMMDD/FirstName_LastName (e.g., Event_20251022/John_Doe)
+                        </option>
+                    </select>
+                    <span class="help-text">Choose how individual photo folders will be named</span>
+                </div>
+
+                <div class="button-group">
+                    <button type="submit" class="btn btn-primary">💾 Save Configuration</button>
+                    <a href="{{ url_for('admin_settings') }}" class="btn btn-secondary">Cancel</a>
+                </div>
+            </form>
+        </div>
+
+        <!-- Setup Instructions -->
+        <div class="card">
+            <h2>📚 Setup Instructions</h2>
+            
+            <div class="info-box">
+                <h3>🎯 How to Get Service Account Credentials</h3>
+            </div>
+
+            <ol class="setup-steps">
+                <li>
+                    <strong>Go to Google Cloud Console</strong>
+                    <p>Visit <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a> and sign in with your Google account.</p>
+                </li>
+                <li>
+                    <strong>Create or Select a Project</strong>
+                    <p>Click the project dropdown at the top and create a new project (e.g., "Photo Registration") or select an existing one.</p>
+                </li>
+                <li>
+                    <strong>Enable Google Drive API</strong>
+                    <p>Go to "APIs & Services" → "Library" → Search for "Google Drive API" → Click "Enable".</p>
+                </li>
+                <li>
+                    <strong>Create Service Account</strong>
+                    <p>Go to "APIs & Services" → "Credentials" → Click "Create Credentials" → Select "Service Account".</p>
+                </li>
+                <li>
+                    <strong>Configure Service Account</strong>
+                    <p>Give it a name (e.g., "photo-uploader"), grant "Editor" role, and click "Done".</p>
+                </li>
+                <li>
+                    <strong>Create & Download JSON Key</strong>
+                    <p>Click on the created service account → Go to "Keys" tab → "Add Key" → "Create new key" → Choose "JSON" → The file will download automatically.</p>
+                </li>
+                <li>
+                    <strong>Share Drive Folder (Important!)</strong>
+                    <p>In Google Drive, create a folder for your event photos. Right-click → Share → Add the service account email (found in the JSON file, looks like <code>photo-uploader@project-id.iam.gserviceaccount.com</code>) → Give it "Editor" access.</p>
+                </li>
+                <li>
+                    <strong>Get Folder ID</strong>
+                    <p>Open the shared folder in Google Drive. Copy the folder ID from the URL (the long string after <code>/folders/</code>).</p>
+                </li>
+                <li>
+                    <strong>Upload Here</strong>
+                    <p>Upload the downloaded JSON file using the form above, and paste the folder ID in the "Parent Folder ID" field.</p>
+                </li>
+            </ol>
+
+            <div class="info-box">
+                <h3>💡 Tips</h3>
+                <ul>
+                    <li>The service account needs "Editor" permissions on the parent folder</li>
+                    <li>You can change the parent folder ID later without re-uploading credentials</li>
+                    <li>Test the connection after uploading to verify everything works</li>
+                    <li>Keep a backup of your JSON file in a secure location</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+        <div style="background: white; padding: 2rem; border-radius: 12px; max-width: 500px; margin: 2rem;">
+            <h3 style="margin-bottom: 1rem; color: #2d3748;">⚠️ Remove Drive Credentials?</h3>
+            <p style="color: #718096; margin-bottom: 1.5rem;">
+                This will remove the Google Drive service account credentials. Photo uploads to Drive will be disabled until you upload new credentials.
+            </p>
+            <form method="POST" action="{{ url_for('admin_drive_delete_credentials') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="button-group">
+                    <button type="submit" class="btn btn-danger">Yes, Remove</button>
+                    <button type="button" onclick="hideDeleteModal()" class="btn btn-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function updateFileName(input) {
+            const fileLabel = document.getElementById('fileLabel');
+            const fileName = document.getElementById('fileName');
+            
+            if (input.files && input.files[0]) {
+                fileLabel.classList.add('has-file');
+                fileName.textContent = '✓ ' + input.files[0].name;
+            } else {
+                fileLabel.classList.remove('has-file');
+                fileName.textContent = '';
+            }
+        }
+
+        function showDeleteModal() {
+            document.getElementById('deleteModal').style.display = 'flex';
+        }
+
+        function hideDeleteModal() {
+            document.getElementById('deleteModal').style.display = 'none';
+        }
+
+        async function testConnection() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '⏳ Testing...';
+
+            try {
+                const response = await fetch('/admin/drive/test-connection', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('✅ Connection successful!\n\n' + data.message);
+                } else {
+                    alert('❌ Connection failed!\n\n' + data.error);
+                }
+
+            } catch (error) {
+                alert('❌ Connection test failed!\n\n' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔍 Test Connection';
+            }
+        }
+
+        // Close modal with Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                hideDeleteModal();
+            }
+        });
+    </script>
+</body>
+</html>

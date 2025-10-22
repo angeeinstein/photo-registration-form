@@ -14,7 +14,9 @@ Pillow>=10.0.0
 opencv-python>=4.8.0
 pyzbar>=0.1.9
 
-# Google Drive API (to be used later)
-# google-api-python-client==2.108.0
-# google-auth-httplib2==0.1.1
-# google-auth-oauthlib==1.1.0
+# Google Drive API
+google-api-python-client>=2.108.0
+google-auth>=2.23.0
+
+# Encryption for credentials
+cryptography>=41.0.0
