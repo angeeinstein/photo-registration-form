@@ -560,6 +560,9 @@ def admin_dashboard():
     try:
         registrations = Registration.query.order_by(Registration.registered_at.desc()).all()
         
+        # Get photo batches (most recent first)
+        photo_batches = PhotoBatch.query.order_by(PhotoBatch.upload_time.desc()).limit(10).all()
+        
         # Get email accounts
         email_accounts = EmailAccount.query.filter_by(is_active=True).all()
         default_account = EmailAccount.get_default()
@@ -579,7 +582,8 @@ def admin_dashboard():
                              registrations=registrations, 
                              stats=stats,
                              email_accounts=email_accounts,
-                             default_account=default_account)
+                             default_account=default_account,
+                             photo_batches=photo_batches)
     except Exception as e:
         app.logger.error(f'Error in admin dashboard: {str(e)}')
         # Check if it's a database schema issue
@@ -1122,12 +1126,91 @@ def mark_batch_uploaded(batch_id):
 
 @app.route('/admin/photos/process/<int:batch_id>')
 @login_required
-def process_photo_batch(batch_id):
-    """Display processing page for a batch (Phase 6)"""
-    # This will be implemented in Phase 6
+def process_photo_batch_page(batch_id):
+    """Display processing page with real-time metrics"""
     batch = PhotoBatch.query.get_or_404(batch_id)
-    flash('Photo processing will be implemented in Phase 6', 'info')
-    return redirect(url_for('admin_dashboard'))
+    
+    # Check if batch is ready to process
+    if batch.status not in ['uploaded', 'error']:
+        flash(f'Batch cannot be processed in current status: {batch.status}', 'error')
+        return redirect(url_for('admin_dashboard'))
+    
+    return render_template('admin_photo_process.html', batch=batch)
+
+@app.route('/admin/photos/process/<int:batch_id>/start', methods=['POST'])
+@login_required
+def start_batch_processing(batch_id):
+    """Start processing a batch (API endpoint)"""
+    try:
+        from photo_processor import PhotoProcessor
+        
+        batch = PhotoBatch.query.get_or_404(batch_id)
+        
+        # Verify batch status
+        if batch.status not in ['uploaded', 'error']:
+            return jsonify({
+                'success': False,
+                'error': f'Batch cannot be processed in current status: {batch.status}'
+            }), 400
+        
+        # Start processing in background
+        # For now, process synchronously - can be moved to Celery/threading later
+        processor = PhotoProcessor(batch_id)
+        metrics = processor.process_batch()
+        
+        return jsonify({
+            'success': True,
+            'metrics': metrics
+        })
+        
+    except Exception as e:
+        app.logger.error(f'Error starting batch processing: {str(e)}')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/admin/photos/process/<int:batch_id>/status')
+@login_required
+def get_processing_status(batch_id):
+    """Get current processing status (for real-time updates)"""
+    try:
+        batch = PhotoBatch.query.get_or_404(batch_id)
+        
+        # Get processing metrics
+        total_photos = batch.total_photos or 0
+        processed_photos = batch.processed_photos or 0
+        progress_pct = int((processed_photos / total_photos * 100)) if total_photos > 0 else 0
+        
+        # Count people found (registrations with photos)
+        people_found = db.session.query(Registration).join(Photo).filter(
+            Photo.batch_id == batch_id,
+            Photo.registration_id.isnot(None)
+        ).distinct().count()
+        
+        # Count unmatched photos
+        unmatched_count = Photo.query.filter_by(
+            batch_id=batch_id,
+            registration_id=None
+        ).count()
+        
+        return jsonify({
+            'success': True,
+            'status': batch.status,
+            'current_action': batch.current_action or '',
+            'processed_photos': processed_photos,
+            'total_photos': total_photos,
+            'progress_percentage': progress_pct,
+            'people_found': people_found,
+            'unmatched_photos': unmatched_count
+        })
+        
+    except Exception as e:
+        app.logger.error(f'Error getting processing status: {str(e)}')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 # Initialize database
 # Initialize database

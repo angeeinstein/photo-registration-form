@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Process Batch: {{ batch.batch_name }} - Photo Registration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .header h1 {
+            color: #2d3748;
+            margin-bottom: 0.5rem;
+            font-size: 2rem;
+        }
+
+        .batch-info {
+            color: #718096;
+            font-size: 0.95rem;
+            margin-top: 0.5rem;
+        }
+
+        .batch-info span {
+            margin-right: 2rem;
+            display: inline-block;
+        }
+
+        .processing-card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 2rem;
+        }
+
+        .status-display {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .status-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+        }
+
+        .status-icon.ready {
+            background: #e6f4ea;
+            color: #1e7e34;
+        }
+
+        .status-icon.processing {
+            background: #fff3cd;
+            color: #856404;
+            animation: pulse 2s infinite;
+        }
+
+        .status-icon.completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-icon.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .status-text {
+            font-size: 1.5rem;
+            color: #2d3748;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+
+        .current-action {
+            color: #718096;
+            font-size: 1rem;
+            min-height: 1.5rem;
+        }
+
+        .progress-section {
+            margin: 2rem 0;
+        }
+
+        .progress-bar-container {
+            background: #e2e8f0;
+            height: 30px;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+
+        .btn {
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #2d3748;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e0;
+        }
+
+        .log-section {
+            margin-top: 2rem;
+        }
+
+        .log-title {
+            font-size: 1.2rem;
+            color: #2d3748;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .log-container {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1rem;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+        }
+
+        .log-entry {
+            padding: 0.25rem 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-entry.info { color: #2d3748; }
+        .log-entry.warning { color: #ed8936; }
+        .log-entry.error { color: #e53e3e; }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .alert-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📸 Process Photo Batch</h1>
+            <div class="batch-info">
+                <span><strong>Batch:</strong> {{ batch.batch_name }}</span>
+                <span><strong>Photos:</strong> {{ batch.total_photos }}</span>
+                <span><strong>Size:</strong> {{ "%.1f"|format(batch.total_size_mb) }} MB</span>
+                <span><strong>Uploaded:</strong> {{ batch.upload_time.strftime('%Y-%m-%d %H:%M') }}</span>
+            </div>
+        </div>
+
+        <div class="processing-card">
+            <div class="status-display">
+                <div id="statusIcon" class="status-icon ready">⏳</div>
+                <div id="statusText" class="status-text">Ready to Process</div>
+                <div id="currentAction" class="current-action">Click "Start Processing" to begin</div>
+            </div>
+
+            <div class="progress-section">
+                <div class="progress-bar-container">
+                    <div id="progressBar" class="progress-bar" style="width: 0%">0%</div>
+                </div>
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div id="photosProcessed" class="metric-value">0</div>
+                    <div class="metric-label">Photos Processed</div>
+                </div>
+                <div class="metric-card">
+                    <div id="peopleFound" class="metric-value">0</div>
+                    <div class="metric-label">People Found</div>
+                </div>
+                <div class="metric-card">
+                    <div id="unmatchedPhotos" class="metric-value">0</div>
+                    <div class="metric-label">Unmatched Photos</div>
+                </div>
+                <div class="metric-card">
+                    <div id="progressPercentage" class="metric-value">0%</div>
+                    <div class="metric-label">Progress</div>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <button id="startBtn" class="btn btn-primary" onclick="startProcessing()">
+                    🚀 Start Processing
+                </button>
+                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+                    ← Back to Dashboard
+                </a>
+            </div>
+
+            <div id="alertContainer"></div>
+
+            <div class="log-section" id="logSection" style="display: none;">
+                <div class="log-title">Processing Log</div>
+                <div class="log-container" id="logContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const batchId = {{ batch.id }};
+        let processingInterval = null;
+        let isProcessing = false;
+
+        // Get CSRF token
+        function getCsrfToken() {
+            return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        }
+
+        // Show alert
+        function showAlert(message, type = 'info') {
+            const alertContainer = document.getElementById('alertContainer');
+            const alertClass = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-warning';
+            
+            alertContainer.innerHTML = `
+                <div class="alert ${alertClass}" style="margin-top: 1rem;">
+                    ${message}
+                </div>
+            `;
+        }
+
+        // Update status display
+        function updateStatus(status, action, icon, iconClass) {
+            const statusIcon = document.getElementById('statusIcon');
+            const statusText = document.getElementById('statusText');
+            const currentAction = document.getElementById('currentAction');
+
+            statusIcon.className = `status-icon ${iconClass}`;
+            statusIcon.textContent = icon;
+            statusText.textContent = status;
+            currentAction.textContent = action;
+        }
+
+        // Update metrics
+        function updateMetrics(data) {
+            document.getElementById('photosProcessed').textContent = data.processed_photos || 0;
+            document.getElementById('peopleFound').textContent = data.people_found || 0;
+            document.getElementById('unmatchedPhotos').textContent = data.unmatched_photos || 0;
+            document.getElementById('progressPercentage').textContent = (data.progress_percentage || 0) + '%';
+
+            // Update progress bar
+            const progressBar = document.getElementById('progressBar');
+            const progress = data.progress_percentage || 0;
+            progressBar.style.width = progress + '%';
+            progressBar.textContent = progress + '%';
+        }
+
+        // Add log entry
+        function addLog(message, level = 'info') {
+            const logSection = document.getElementById('logSection');
+            const logContainer = document.getElementById('logContainer');
+            
+            logSection.style.display = 'block';
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${level}`;
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // Start processing
+        async function startProcessing() {
+            const startBtn = document.getElementById('startBtn');
+            startBtn.disabled = true;
+            startBtn.textContent = '⏳ Processing...';
+            
+            isProcessing = true;
+            updateStatus('Processing', 'Starting batch processing...', '⚙️', 'processing');
+            addLog('Starting batch processing...', 'info');
+
+            try {
+                const response = await fetch(`/admin/photos/process/${batchId}/start`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCsrfToken()
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Start polling for status updates
+                    pollStatus();
+                } else {
+                    throw new Error(data.error || 'Failed to start processing');
+                }
+
+            } catch (error) {
+                console.error('Error starting processing:', error);
+                updateStatus('Error', error.message, '❌', 'error');
+                showAlert(`Failed to start processing: ${error.message}`, 'error');
+                addLog(`Error: ${error.message}`, 'error');
+                startBtn.disabled = false;
+                startBtn.textContent = '🔄 Retry';
+                isProcessing = false;
+            }
+        }
+
+        // Poll for status updates
+        async function pollStatus() {
+            try {
+                const response = await fetch(`/admin/photos/process/${batchId}/status`);
+                const data = await response.json();
+
+                if (data.success) {
+                    updateMetrics(data);
+                    updateStatus(
+                        data.status.charAt(0).toUpperCase() + data.status.slice(1),
+                        data.current_action || '',
+                        data.status === 'completed' ? '✅' : '⚙️',
+                        data.status === 'completed' ? 'completed' : data.status === 'error' ? 'error' : 'processing'
+                    );
+
+                    // Check if processing is complete
+                    if (data.status === 'completed') {
+                        isProcessing = false;
+                        clearInterval(processingInterval);
+                        showAlert(
+                            `Processing completed! Found ${data.people_found} people. ${data.unmatched_photos} photos unmatched.`,
+                            'success'
+                        );
+                        addLog(`Processing completed successfully!`, 'info');
+                        
+                        // Update button
+                        const startBtn = document.getElementById('startBtn');
+                        startBtn.textContent = '✅ Processing Complete';
+                        startBtn.disabled = true;
+                        
+                    } else if (data.status === 'error') {
+                        isProcessing = false;
+                        clearInterval(processingInterval);
+                        showAlert('Processing failed. Check the logs for details.', 'error');
+                        addLog('Processing failed', 'error');
+                        
+                        // Update button
+                        const startBtn = document.getElementById('startBtn');
+                        startBtn.textContent = '🔄 Retry';
+                        startBtn.disabled = false;
+                    } else if (isProcessing) {
+                        // Continue polling
+                        setTimeout(pollStatus, 1000);
+                    }
+                }
+
+            } catch (error) {
+                console.error('Error polling status:', error);
+                if (isProcessing) {
+                    setTimeout(pollStatus, 2000); // Retry with longer delay
+                }
+            }
+        }
+
+        // Check initial status on page load
+        window.addEventListener('load', async () => {
+            try {
+                const response = await fetch(`/admin/photos/process/${batchId}/status`);
+                const data = await response.json();
+
+                if (data.success) {
+                    updateMetrics(data);
+
+                    // If already processing, start polling
+                    if (data.status === 'processing') {
+                        isProcessing = true;
+                        document.getElementById('startBtn').disabled = true;
+                        document.getElementById('startBtn').textContent = '⏳ Processing...';
+                        pollStatus();
+                    } else if (data.status === 'completed') {
+                        updateStatus('Completed', 'Processing completed', '✅', 'completed');
+                        document.getElementById('startBtn').textContent = '✅ Already Processed';
+                        document.getElementById('startBtn').disabled = true;
+                        showAlert('This batch has already been processed.', 'info');
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking status:', error);
+            }
+        });
+    </script>
+</body>
+</html>

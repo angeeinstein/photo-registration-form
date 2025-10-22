@@ -132,6 +132,75 @@
                 <button type="submit">Send to All</button>
             </form>
         </div>
+
+        <!-- Photo Batches Section -->
+        <div style="margin-top: 3rem;">
+            <h2 style="margin-bottom: 1rem;">📸 Photo Batches</h2>
+            {% if photo_batches and photo_batches|length > 0 %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Batch Name</th>
+                        <th>Photos</th>
+                        <th>Size</th>
+                        <th>Uploaded</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for batch in photo_batches %}
+                    <tr>
+                        <td><strong>{{ batch.batch_name }}</strong></td>
+                        <td>{{ batch.total_photos }}</td>
+                        <td>{{ "%.1f"|format(batch.total_size_mb) }} MB</td>
+                        <td>{{ batch.upload_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>
+                            {% if batch.status == 'uploading' %}
+                                <span class="badge pending">⏳ Uploading</span>
+                            {% elif batch.status == 'uploaded' %}
+                                <span class="badge" style="background: #17a2b8;">📦 Ready</span>
+                            {% elif batch.status == 'processing' %}
+                                <span class="badge" style="background: #ffc107; color: #333;">⚙️ Processing</span>
+                            {% elif batch.status == 'completed' %}
+                                <span class="badge sent">✓ Completed</span>
+                            {% elif batch.status == 'error' %}
+                                <span class="badge" style="background: #dc3545;">❌ Error</span>
+                            {% endif %}
+                            {% if batch.current_action %}
+                                <br><small style="color: #666;">{{ batch.current_action }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="actions">
+                                {% if batch.status in ['uploaded', 'error'] %}
+                                <a href="{{ url_for('process_photo_batch_page', batch_id=batch.id) }}" 
+                                   class="btn btn-primary" style="background: #4CAF50; text-decoration: none;">
+                                    🚀 Process
+                                </a>
+                                {% elif batch.status == 'processing' %}
+                                <a href="{{ url_for('process_photo_batch_page', batch_id=batch.id) }}" 
+                                   class="btn btn-info" style="text-decoration: none;">
+                                    👁️ View Progress
+                                </a>
+                                {% elif batch.status == 'completed' %}
+                                <a href="{{ url_for('process_photo_batch_page', batch_id=batch.id) }}" 
+                                   class="btn btn-info" style="text-decoration: none;">
+                                    📊 View Results
+                                </a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="color: #666; padding: 2rem; text-align: center; background: #f5f5f5; border-radius: 8px;">
+                No photo batches uploaded yet. <a href="{{ url_for('admin_photo_upload') }}" style="color: #4CAF50;">Upload photos</a> to get started.
+            </p>
+            {% endif %}
+        </div>
     </div>
 
     <!-- Delete All Modal -->
