@@ -344,6 +344,7 @@ def send_confirmation_email(to_email: str, first_name: str, last_name: str, regi
     if registration_id and qr_token:
         try:
             from qr_generator import generate_qr_code_inline
+            logger.info(f"Generating QR code for registration {registration_id}")
             qr_code_data_uri = generate_qr_code_inline(
                 first_name=first_name,
                 last_name=last_name,
@@ -353,12 +354,19 @@ def send_confirmation_email(to_email: str, first_name: str, last_name: str, regi
                 size=300
             )
             variables['qr_code_data_uri'] = qr_code_data_uri
-            logger.info(f"QR code generated for registration {registration_id}")
+            logger.info(f"QR code generated successfully for registration {registration_id}")
+        except ImportError as e:
+            logger.error(f"Failed to import qr_generator: {e}")
+            logger.error("Make sure qrcode[pil] package is installed: pip install 'qrcode[pil]'")
+            variables['qr_code_data_uri'] = None
         except Exception as e:
             logger.error(f"Failed to generate QR code: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             # Continue without QR code - email will still be sent
             variables['qr_code_data_uri'] = None
     else:
+        logger.warning(f"QR code not generated - missing data: registration_id={registration_id}, qr_token={qr_token}")
         variables['qr_code_data_uri'] = None
     
     # Get subject from environment or use default
