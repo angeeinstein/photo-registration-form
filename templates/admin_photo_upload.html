@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Upload - Admin Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v={{ range(1, 10000) | random }}">
+    <style>
+        .upload-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .upload-section {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .upload-zone {
+            border: 3px dashed #ccc;
+            border-radius: 8px;
+            padding: 60px 20px;
+            text-align: center;
+            background: #f9f9f9;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .upload-zone.dragover {
+            border-color: #4CAF50;
+            background: #e8f5e9;
+        }
+
+        .upload-zone.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .upload-zone-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+
+        .upload-zone h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+
+        .upload-zone p {
+            color: #666;
+            margin: 5px 0;
+        }
+
+        .batch-name-input {
+            margin-bottom: 20px;
+        }
+
+        .batch-name-input label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .batch-name-input input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .metric-card.success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+
+        .metric-card.warning {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .metric-card.info {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        .metric-label {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .metric-value {
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .metric-subtext {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+
+        .progress-section {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .progress-section.active {
+            display: block;
+        }
+
+        .progress-bar-container {
+            background: #f0f0f0;
+            border-radius: 10px;
+            height: 30px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .current-file {
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            font-family: monospace;
+            color: #333;
+        }
+
+        .current-file strong {
+            color: #4CAF50;
+        }
+
+        .file-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            background: #fafafa;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            margin-bottom: 5px;
+            background: white;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .file-item.uploading {
+            background: #fff3cd;
+        }
+
+        .file-item.uploaded {
+            background: #d4edda;
+        }
+
+        .file-item.error {
+            background: #f8d7da;
+        }
+
+        .file-status {
+            font-weight: bold;
+        }
+
+        .file-status.uploading {
+            color: #856404;
+        }
+
+        .file-status.uploaded {
+            color: #155724;
+        }
+
+        .file-status.error {
+            color: #721c24;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .btn-secondary {
+            background: #2196F3;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #0b7dda;
+        }
+
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #da190b;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            border: 1px solid #f5c6cb;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            border: 1px solid #c3e6cb;
+        }
+
+        .validation-errors {
+            margin-top: 15px;
+            padding: 15px;
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+        }
+
+        .validation-errors h4 {
+            margin: 0 0 10px 0;
+            color: #856404;
+        }
+
+        .validation-errors ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .validation-errors li {
+            color: #856404;
+            margin-bottom: 5px;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #2196F3;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="upload-container">
+        <a href="{{ url_for('admin_dashboard') }}" class="back-link">← Back to Dashboard</a>
+
+        <div class="header">
+            <h1>📸 Photo Upload</h1>
+            <p style="color: #666; margin-top: 10px;">Upload photos from the event. Photos will be sorted by filename during processing.</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="{{ 'error-message' if category == 'error' else 'success-message' }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="upload-section">
+            <div class="batch-name-input">
+                <label for="batchName">Batch Name (optional):</label>
+                <input type="text" id="batchName" placeholder="e.g., Event Photos October 2025" maxlength="200">
+            </div>
+
+            <div id="uploadZone" class="upload-zone">
+                <div class="upload-zone-icon">📁</div>
+                <h3>Drag & Drop Photos Here</h3>
+                <p>or click to select files</p>
+                <p style="font-size: 14px; color: #999; margin-top: 10px;">
+                    Supports JPEG/JPG files • Max 50MB per file • Up to 2000 files
+                </p>
+            </div>
+
+            <input type="file" id="fileInput" multiple accept="image/jpeg,image/jpg">
+
+            <div id="validationErrors" class="validation-errors hidden">
+                <h4>⚠️ Validation Issues</h4>
+                <ul id="validationList"></ul>
+            </div>
+
+            <div id="progressSection" class="progress-section">
+                <h3>Upload Progress</h3>
+                
+                <div class="metrics-grid">
+                    <div class="metric-card info">
+                        <div class="metric-label">Files Uploaded</div>
+                        <div class="metric-value">
+                            <span id="uploadedCount">0</span>/<span id="totalCount">0</span>
+                        </div>
+                        <div class="metric-subtext" id="progressPercent">0%</div>
+                    </div>
+                    
+                    <div class="metric-card success">
+                        <div class="metric-label">Total Size</div>
+                        <div class="metric-value" id="totalSize">0 MB</div>
+                        <div class="metric-subtext" id="uploadedSize">0 MB uploaded</div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-label">Upload Speed</div>
+                        <div class="metric-value" id="uploadSpeed">-- MB/s</div>
+                        <div class="metric-subtext" id="remainingTime">Calculating...</div>
+                    </div>
+
+                    <div class="metric-card warning">
+                        <div class="metric-label">Validation Status</div>
+                        <div class="metric-value" id="validationStatus">✓</div>
+                        <div class="metric-subtext" id="validationText">All files valid</div>
+                    </div>
+                </div>
+
+                <div class="progress-bar-container">
+                    <div id="progressBar" class="progress-bar" style="width: 0%">0%</div>
+                </div>
+
+                <div class="current-file" id="currentFile">
+                    <strong>Current:</strong> <span id="currentFileName">--</span>
+                </div>
+            </div>
+
+            <div id="completionSection" class="hidden">
+                <h3>✓ Upload Complete</h3>
+                
+                <div class="metrics-grid">
+                    <div class="metric-card success">
+                        <div class="metric-label">Total Photos</div>
+                        <div class="metric-value" id="finalPhotoCount">0</div>
+                    </div>
+                    
+                    <div class="metric-card info">
+                        <div class="metric-label">Total Size</div>
+                        <div class="metric-value" id="finalSize">0 MB</div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-label">Batch ID</div>
+                        <div class="metric-value" id="batchId">--</div>
+                    </div>
+
+                    <div class="metric-card warning">
+                        <div class="metric-label">Status</div>
+                        <div class="metric-value">⏳</div>
+                        <div class="metric-subtext">Ready to Process</div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button id="processBtn" class="btn btn-primary">
+                        🔄 Process Photos
+                    </button>
+                    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+                        📊 Back to Dashboard
+                    </a>
+                    <button id="uploadMoreBtn" class="btn btn-danger">
+                        📁 Upload Another Batch
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+        const MAX_FILES = 2000;
+        const ALLOWED_TYPES = ['image/jpeg', 'image/jpg'];
+        const CHUNK_SIZE = 5; // Upload 5 files at a time
+
+        // State
+        let selectedFiles = [];
+        let uploadedFiles = [];
+        let validationErrors = [];
+        let currentBatchId = null;
+        let uploadStartTime = null;
+        let totalBytesUploaded = 0;
+
+        // Elements
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+        const progressSection = document.getElementById('progressSection');
+        const completionSection = document.getElementById('completionSection');
+        const batchNameInput = document.getElementById('batchName');
+        const validationErrorsDiv = document.getElementById('validationErrors');
+        const validationList = document.getElementById('validationList');
+
+        // Initialize
+        uploadZone.addEventListener('click', () => {
+            if (!uploadZone.classList.contains('disabled')) {
+                fileInput.click();
+            }
+        });
+
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            if (!uploadZone.classList.contains('disabled')) {
+                uploadZone.classList.add('dragover');
+            }
+        });
+
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragover');
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            if (!uploadZone.classList.contains('disabled')) {
+                handleFiles(e.dataTransfer.files);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        document.getElementById('uploadMoreBtn')?.addEventListener('click', () => {
+            location.reload();
+        });
+
+        document.getElementById('processBtn')?.addEventListener('click', () => {
+            if (currentBatchId) {
+                window.location.href = `/admin/photos/process/${currentBatchId}`;
+            }
+        });
+
+        // Handle file selection
+        function handleFiles(files) {
+            selectedFiles = Array.from(files);
+            validationErrors = [];
+
+            // Validate files
+            if (selectedFiles.length > MAX_FILES) {
+                validationErrors.push(`Too many files selected (${selectedFiles.length}). Maximum is ${MAX_FILES}.`);
+            }
+
+            selectedFiles.forEach((file, index) => {
+                // Check file type
+                if (!ALLOWED_TYPES.includes(file.type)) {
+                    validationErrors.push(`File "${file.name}" is not a JPEG/JPG image.`);
+                }
+
+                // Check file size
+                if (file.size > MAX_FILE_SIZE) {
+                    const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                    validationErrors.push(`File "${file.name}" is too large (${sizeMB}MB). Maximum is 50MB.`);
+                }
+            });
+
+            // Show validation errors or start upload
+            if (validationErrors.length > 0) {
+                showValidationErrors();
+            } else {
+                validationErrorsDiv.classList.add('hidden');
+                startUpload();
+            }
+        }
+
+        function showValidationErrors() {
+            validationList.innerHTML = '';
+            validationErrors.forEach(error => {
+                const li = document.createElement('li');
+                li.textContent = error;
+                validationList.appendChild(li);
+            });
+            validationErrorsDiv.classList.remove('hidden');
+            
+            document.getElementById('validationStatus').textContent = '⚠️';
+            document.getElementById('validationText').textContent = `${validationErrors.length} issues found`;
+        }
+
+        // Start upload process
+        async function startUpload() {
+            uploadZone.classList.add('disabled');
+            batchNameInput.disabled = true;
+            progressSection.classList.add('active');
+            uploadStartTime = Date.now();
+
+            // Update totals
+            document.getElementById('totalCount').textContent = selectedFiles.length;
+            const totalSizeMB = (selectedFiles.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024)).toFixed(2);
+            document.getElementById('totalSize').textContent = `${totalSizeMB} MB`;
+
+            // Create batch
+            try {
+                const batchName = batchNameInput.value.trim() || `Batch_${new Date().toISOString().split('T')[0]}`;
+                const response = await fetch('/admin/photos/create-batch', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        batch_name: batchName,
+                        total_photos: selectedFiles.length,
+                        total_size_mb: parseFloat(totalSizeMB)
+                    })
+                });
+
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to create batch');
+                }
+
+                currentBatchId = data.batch_id;
+                
+                // Upload files in chunks
+                await uploadFilesInChunks();
+
+            } catch (error) {
+                console.error('Upload error:', error);
+                alert('Upload failed: ' + error.message);
+                location.reload();
+            }
+        }
+
+        // Upload files in chunks
+        async function uploadFilesInChunks() {
+            for (let i = 0; i < selectedFiles.length; i += CHUNK_SIZE) {
+                const chunk = selectedFiles.slice(i, i + CHUNK_SIZE);
+                await Promise.all(chunk.map(file => uploadFile(file, i)));
+                
+                // Update metrics after each chunk
+                updateMetrics();
+            }
+
+            // All files uploaded
+            completeUpload();
+        }
+
+        // Upload single file
+        async function uploadFile(file, index) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('batch_id', currentBatchId);
+
+            // Update current file display
+            document.getElementById('currentFileName').textContent = file.name;
+
+            try {
+                const response = await fetch('/admin/photos/upload-file', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    uploadedFiles.push(file);
+                    totalBytesUploaded += file.size;
+                } else {
+                    console.error('Upload failed for', file.name, data.error);
+                }
+
+            } catch (error) {
+                console.error('Upload error for', file.name, error);
+            }
+        }
+
+        // Update progress metrics
+        function updateMetrics() {
+            const uploaded = uploadedFiles.length;
+            const total = selectedFiles.length;
+            const percent = Math.round((uploaded / total) * 100);
+
+            document.getElementById('uploadedCount').textContent = uploaded;
+            document.getElementById('progressPercent').textContent = `${percent}%`;
+            document.getElementById('progressBar').style.width = `${percent}%`;
+            document.getElementById('progressBar').textContent = `${percent}%`;
+
+            // Calculate upload speed
+            const elapsedSeconds = (Date.now() - uploadStartTime) / 1000;
+            const speedMBps = (totalBytesUploaded / (1024 * 1024)) / elapsedSeconds;
+            document.getElementById('uploadSpeed').textContent = `${speedMBps.toFixed(2)} MB/s`;
+
+            // Calculate uploaded size
+            const uploadedMB = (totalBytesUploaded / (1024 * 1024)).toFixed(2);
+            document.getElementById('uploadedSize').textContent = `${uploadedMB} MB uploaded`;
+
+            // Calculate remaining time
+            const remainingFiles = total - uploaded;
+            const avgTimePerFile = elapsedSeconds / uploaded;
+            const remainingSeconds = Math.round(remainingFiles * avgTimePerFile);
+            document.getElementById('remainingTime').textContent = remainingSeconds > 0 
+                ? `~${remainingSeconds}s remaining` 
+                : 'Almost done...';
+        }
+
+        // Complete upload
+        function completeUpload() {
+            progressSection.classList.remove('active');
+            completionSection.classList.remove('hidden');
+
+            const totalSizeMB = (totalBytesUploaded / (1024 * 1024)).toFixed(2);
+            document.getElementById('finalPhotoCount').textContent = uploadedFiles.length;
+            document.getElementById('finalSize').textContent = `${totalSizeMB} MB`;
+            document.getElementById('batchId').textContent = currentBatchId;
+
+            // Mark batch as uploaded
+            fetch(`/admin/photos/batch-uploaded/${currentBatchId}`, {
+                method: 'POST'
+            }).catch(err => console.error('Failed to mark batch as uploaded:', err));
+        }
+    </script>
+</body>
+</html>

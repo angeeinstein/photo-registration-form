@@ -3,12 +3,14 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from werkzeug.utils import secure_filename
 from datetime import datetime
 import os
 from dotenv import load_dotenv
 from functools import wraps
 from send_email import send_confirmation_email, send_photos_email, create_email_sender_from_env, test_email_configuration
 import re
+import uuid
 
 # Load environment variables from .env file
 load_dotenv()
@@ -69,6 +71,14 @@ class Registration(db.Model):
     confirmation_sent = db.Column(db.Boolean, default=False)
     photos_sent = db.Column(db.Boolean, default=False)
     
+    # Photo workflow fields
+    qr_token = db.Column(db.String(100), unique=True, nullable=True)  # UUID for QR code
+    photo_count = db.Column(db.Integer, default=0)  # Number of photos for this person
+    drive_folder_id = db.Column(db.String(200), nullable=True)  # Google Drive folder ID
+    drive_share_link = db.Column(db.String(500), nullable=True)  # Shareable link
+    photos_email_sent = db.Column(db.Boolean, default=False)  # Track if Drive link was emailed
+    photos_email_sent_at = db.Column(db.DateTime, nullable=True)  # When Drive email was sent
+    
     def __repr__(self):
         return f'<Registration {self.first_name} {self.last_name}>'
     
@@ -80,7 +90,114 @@ class Registration(db.Model):
             'email': self.email,
             'registered_at': self.registered_at.isoformat(),
             'confirmation_sent': self.confirmation_sent,
-            'photos_sent': self.photos_sent
+            'photos_sent': self.photos_sent,
+            'qr_token': self.qr_token,
+            'photo_count': self.photo_count,
+            'drive_share_link': self.drive_share_link,
+            'photos_email_sent': self.photos_email_sent,
+            'photos_email_sent_at': self.photos_email_sent_at.isoformat() if self.photos_email_sent_at else None
+        }
+
+# PhotoBatch Model - Represents a batch of uploaded photos
+class PhotoBatch(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    batch_name = db.Column(db.String(200), nullable=False)
+    upload_time = db.Column(db.DateTime, default=datetime.utcnow)
+    total_photos = db.Column(db.Integer, default=0)
+    total_size_mb = db.Column(db.Float, default=0.0)
+    processed_photos = db.Column(db.Integer, default=0)
+    status = db.Column(db.String(50), default='uploading')  # uploading, uploaded, processing, completed, failed
+    current_action = db.Column(db.String(500), nullable=True)  # Real-time status message
+    people_found = db.Column(db.Integer, default=0)  # Number of people found during processing
+    unmatched_photos = db.Column(db.Integer, default=0)  # Photos that couldn't be matched
+    processing_started_at = db.Column(db.DateTime, nullable=True)
+    processing_completed_at = db.Column(db.DateTime, nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    
+    def __repr__(self):
+        return f'<PhotoBatch {self.batch_name}>'
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'batch_name': self.batch_name,
+            'upload_time': self.upload_time.isoformat(),
+            'total_photos': self.total_photos,
+            'total_size_mb': self.total_size_mb,
+            'processed_photos': self.processed_photos,
+            'status': self.status,
+            'current_action': self.current_action,
+            'people_found': self.people_found,
+            'unmatched_photos': self.unmatched_photos,
+            'processing_started_at': self.processing_started_at.isoformat() if self.processing_started_at else None,
+            'processing_completed_at': self.processing_completed_at.isoformat() if self.processing_completed_at else None,
+            'error_message': self.error_message
+        }
+
+# Photo Model - Individual photos in a batch
+class Photo(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    batch_id = db.Column(db.Integer, db.ForeignKey('photo_batch.id'), nullable=False)
+    registration_id = db.Column(db.Integer, db.ForeignKey('registration.id'), nullable=True)
+    filename = db.Column(db.String(500), nullable=False)
+    original_path = db.Column(db.String(500), nullable=False)
+    file_size = db.Column(db.Integer, default=0)  # Size in bytes
+    is_qr_code = db.Column(db.Boolean, default=False)  # True if this photo contains a QR code
+    qr_data = db.Column(db.String(500), nullable=True)  # Parsed QR code data
+    processed = db.Column(db.Boolean, default=False)
+    uploaded_to_drive = db.Column(db.Boolean, default=False)
+    upload_time = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    batch = db.relationship('PhotoBatch', backref='photos')
+    registration = db.relationship('Registration', backref='photos')
+    
+    def __repr__(self):
+        return f'<Photo {self.filename}>'
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'batch_id': self.batch_id,
+            'registration_id': self.registration_id,
+            'filename': self.filename,
+            'file_size': self.file_size,
+            'is_qr_code': self.is_qr_code,
+            'qr_data': self.qr_data,
+            'processed': self.processed,
+            'uploaded_to_drive': self.uploaded_to_drive,
+            'upload_time': self.upload_time.isoformat()
+        }
+
+# ProcessingLog Model - Detailed log of processing events
+class ProcessingLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    batch_id = db.Column(db.Integer, db.ForeignKey('photo_batch.id'), nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    action = db.Column(db.String(100), nullable=False)  # qr_detected, photos_assigned, upload_started, etc.
+    message = db.Column(db.Text, nullable=False)
+    level = db.Column(db.String(20), default='info')  # info, warning, error
+    registration_id = db.Column(db.Integer, db.ForeignKey('registration.id'), nullable=True)
+    photo_id = db.Column(db.Integer, db.ForeignKey('photo.id'), nullable=True)
+    
+    # Relationships
+    batch = db.relationship('PhotoBatch', backref='logs')
+    registration = db.relationship('Registration', backref='processing_logs')
+    photo = db.relationship('Photo', backref='logs')
+    
+    def __repr__(self):
+        return f'<ProcessingLog {self.action} at {self.timestamp}>'
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'batch_id': self.batch_id,
+            'timestamp': self.timestamp.isoformat(),
+            'action': self.action,
+            'message': self.message,
+            'level': self.level,
+            'registration_id': self.registration_id,
+            'photo_id': self.photo_id
         }
 
 # Admin settings model (stored in database)
@@ -277,11 +394,15 @@ def register():
         if not validate_email(email):
             return jsonify({'error': 'Invalid email format'}), 400
         
+        # Generate unique QR token for photo workflow
+        qr_token = str(uuid.uuid4())
+        
         # Create new registration
         registration = Registration(
             first_name=first_name,
             last_name=last_name,
-            email=email
+            email=email,
+            qr_token=qr_token
         )
         
         db.session.add(registration)
@@ -312,9 +433,11 @@ def register():
                 
                 if default_account:
                     email_sent = send_confirmation_email(
-                        registration.email,
-                        registration.first_name,
-                        registration.last_name,
+                        to_email=registration.email,
+                        first_name=registration.first_name,
+                        last_name=registration.last_name,
+                        registration_id=registration.id,
+                        qr_token=registration.qr_token,
                         account=default_account
                     )
                     if email_sent:
@@ -500,16 +623,18 @@ def admin_resend_confirmation(registration_id):
             return redirect(url_for('admin_dashboard'))
         
         success = send_confirmation_email(
-            registration.email,
-            registration.first_name,
-            registration.last_name,
+            to_email=registration.email,
+            first_name=registration.first_name,
+            last_name=registration.last_name,
+            registration_id=registration.id,
+            qr_token=registration.qr_token,
             account=account
         )
         
         if success:
             registration.confirmation_sent = True
             db.session.commit()
-            flash(f'Confirmation email resent to {registration.email} from "{account.name}"', 'success')
+            flash(f'Confirmation email with QR code resent to {registration.email} from "{account.name}"', 'success')
         else:
             flash(f'Failed to resend confirmation email to {registration.email}', 'error')
     except Exception as e:
@@ -783,6 +908,203 @@ def admin_test_account(account_id):
         flash(f'Error testing account: {str(e)}', 'error')
     
     return redirect(url_for('admin_email_accounts'))
+
+# ============================================
+# Photo Upload Routes
+# ============================================
+
+@app.route('/admin/photos/upload')
+@login_required
+def admin_photo_upload():
+    """Display photo upload page"""
+    return render_template('admin_photo_upload.html')
+
+@app.route('/admin/photos/create-batch', methods=['POST'])
+@login_required
+def create_photo_batch():
+    """Create a new photo batch for uploading"""
+    try:
+        data = request.get_json()
+        batch_name = data.get('batch_name', f'Batch_{datetime.now().strftime("%Y%m%d_%H%M%S")}')
+        total_photos = data.get('total_photos', 0)
+        total_size_mb = data.get('total_size_mb', 0)
+        
+        # Validate batch name
+        if not batch_name or len(batch_name) > 200:
+            return jsonify({'success': False, 'error': 'Invalid batch name'}), 400
+        
+        # Create batch record
+        batch = PhotoBatch(
+            batch_name=batch_name,
+            upload_time=datetime.now(),
+            total_photos=total_photos,
+            total_size_mb=total_size_mb,
+            processed_photos=0,
+            status='uploading',
+            current_action='Waiting for files...'
+        )
+        
+        db.session.add(batch)
+        db.session.commit()
+        
+        # Create batch directory
+        batch_dir = os.path.join('uploads', 'batches', str(batch.id))
+        os.makedirs(batch_dir, exist_ok=True)
+        
+        # Log batch creation
+        log = ProcessingLog(
+            batch_id=batch.id,
+            action='batch_created',
+            message=f'Batch "{batch_name}" created with expected {total_photos} photos ({total_size_mb:.2f} MB)',
+            level='info'
+        )
+        db.session.add(log)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'batch_id': batch.id,
+            'batch_name': batch.batch_name
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f'Error creating batch: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/admin/photos/upload-file', methods=['POST'])
+@login_required
+def upload_photo_file():
+    """Upload a single photo file to a batch"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        batch_id = request.form.get('batch_id')
+        
+        if not batch_id:
+            return jsonify({'success': False, 'error': 'No batch ID provided'}), 400
+        
+        batch = PhotoBatch.query.get(batch_id)
+        if not batch:
+            return jsonify({'success': False, 'error': 'Batch not found'}), 404
+        
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'}), 400
+        
+        # Validate file type (check magic bytes, not just extension)
+        file_header = file.read(12)
+        file.seek(0)
+        
+        # JPEG magic bytes: FF D8 FF
+        is_jpeg = file_header[:3] == b'\xff\xd8\xff'
+        
+        if not is_jpeg:
+            return jsonify({'success': False, 'error': 'File is not a valid JPEG image'}), 400
+        
+        # Validate file size
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell()
+        file.seek(0)
+        
+        max_size = 50 * 1024 * 1024  # 50MB
+        if file_size > max_size:
+            return jsonify({'success': False, 'error': 'File size exceeds 50MB limit'}), 400
+        
+        # Preserve original filename for sorting (important for photo order!)
+        original_filename = secure_filename(file.filename)
+        if not original_filename:
+            original_filename = f'photo_{datetime.now().strftime("%Y%m%d_%H%M%S_%f")}.jpg'
+        
+        # Save file with original name, handle duplicates by adding counter to disk filename
+        batch_dir = os.path.join('uploads', 'batches', str(batch_id))
+        os.makedirs(batch_dir, exist_ok=True)
+        
+        disk_filename = original_filename
+        file_path = os.path.join(batch_dir, disk_filename)
+        
+        # Handle duplicate filenames on disk (only affects storage, not sorting)
+        counter = 1
+        base_name, ext = os.path.splitext(original_filename)
+        while os.path.exists(file_path):
+            disk_filename = f"{base_name}_{counter}{ext}"
+            file_path = os.path.join(batch_dir, disk_filename)
+            counter += 1
+        
+        file.save(file_path)
+        
+        # Create photo record - filename stores ORIGINAL name for proper sorting
+        photo = Photo(
+            batch_id=batch_id,
+            filename=original_filename,  # IMPORTANT: Original name for sorting by camera order
+            original_path=file_path,     # Actual disk path (may have counter suffix)
+            file_size=file_size,
+            upload_time=datetime.now(),
+            is_qr_code=False,
+            processed=False,
+            uploaded_to_drive=False
+        )
+        
+        db.session.add(photo)
+        
+        # Update batch progress
+        batch.processed_photos = Photo.query.filter_by(batch_id=batch_id).count()
+        batch.current_action = f'Uploading: {original_filename}'
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'filename': original_filename,
+            'file_size': file_size
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f'Error uploading file: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/admin/photos/batch-uploaded/<int:batch_id>', methods=['POST'])
+@login_required
+def mark_batch_uploaded(batch_id):
+    """Mark a batch as fully uploaded"""
+    try:
+        batch = PhotoBatch.query.get_or_404(batch_id)
+        
+        # Update batch status
+        batch.status = 'uploaded'
+        batch.current_action = 'Upload complete. Ready to process.'
+        
+        # Update actual photo count
+        actual_count = Photo.query.filter_by(batch_id=batch_id).count()
+        batch.total_photos = actual_count
+        
+        # Log completion
+        log = ProcessingLog(
+            batch_id=batch_id,
+            action='upload_completed',
+            message=f'Upload completed: {actual_count} photos uploaded',
+            level='info'
+        )
+        db.session.add(log)
+        db.session.commit()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f'Error marking batch as uploaded: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/admin/photos/process/<int:batch_id>')
+@login_required
+def process_photo_batch(batch_id):
+    """Display processing page for a batch (Phase 6)"""
+    # This will be implemented in Phase 6
+    batch = PhotoBatch.query.get_or_404(batch_id)
+    flash('Photo processing will be implemented in Phase 6', 'info')
+    return redirect(url_for('admin_dashboard'))
 
 # Initialize database
 # Initialize database

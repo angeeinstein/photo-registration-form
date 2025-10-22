@@ -34,6 +34,24 @@ pip-delete-this-directory.txt
 registrations.db*
 *.db.backup*
 
+# Uploaded photos (exclude actual files, keep directory structure)
+uploads/
+!uploads/.gitkeep
+!uploads/batches/
+uploads/batches/*
+!uploads/batches/.gitkeep
+!uploads/processed/
+uploads/processed/*
+!uploads/processed/.gitkeep
+
+# QR codes (temporary)
+qr_codes/
+!qr_codes/.gitkeep
+
+# Google Drive credentials
+google_credentials.json
+service_account.json
+
 # Environment variables
 .env
 .env.local

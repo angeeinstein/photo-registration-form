@@ -107,6 +107,12 @@ check_python() {
 }
 
 # Install system dependencies
+# Includes:
+# - Python 3 and development tools
+# - Nginx web server
+# - SQLite database
+# - libzbar: QR code detection library (for pyzbar)
+# - OpenCV: Computer vision library (for photo processing)
 install_dependencies() {
     print_header "Installing System Dependencies"
     
@@ -127,6 +133,10 @@ install_dependencies() {
                 wget \
                 sqlite3 \
                 nginx \
+                libzbar0 \
+                libzbar-dev \
+                libopencv-dev \
+                python3-opencv \
                 || { print_error "Failed to install dependencies"; exit 1; }
             ;;
         centos|rhel|fedora)
@@ -142,6 +152,10 @@ install_dependencies() {
                     wget \
                     sqlite \
                     nginx \
+                    zbar \
+                    zbar-devel \
+                    opencv \
+                    opencv-devel \
                     || { print_error "Failed to install dependencies"; exit 1; }
             else
                 yum install -y \
@@ -154,6 +168,10 @@ install_dependencies() {
                     wget \
                     sqlite \
                     nginx \
+                    zbar \
+                    zbar-devel \
+                    opencv \
+                    opencv-devel \
                     || { print_error "Failed to install dependencies"; exit 1; }
             fi
             ;;
@@ -318,6 +336,42 @@ update_installation() {
         mv .env.backup .env
         print_success ".env file restored"
     fi
+    
+    # Create uploads directory structure if it doesn't exist (for photo workflow)
+    print_info "Ensuring uploads directory structure exists..."
+    mkdir -p "${INSTALL_DIR}/uploads/batches"
+    mkdir -p "${INSTALL_DIR}/uploads/processed"
+    mkdir -p "${INSTALL_DIR}/qr_codes"
+    
+    # Set proper permissions for upload directories
+    print_info "Setting permissions for upload directories..."
+    chmod -R 755 "${INSTALL_DIR}/uploads" 2>/dev/null || true
+    chmod -R 755 "${INSTALL_DIR}/qr_codes" 2>/dev/null || true
+    
+    # Run database migration for photo workflow
+    print_info "Running database migration..."
+    source "${VENV_DIR}/bin/activate"
+    cd "${INSTALL_DIR}"
+    
+    # Check if migration is needed
+    if [[ -f "migrate_photo_workflow.py" ]]; then
+        print_info "Photo workflow migration script found, checking if migration needed..."
+        $PYTHON_CMD migrate_photo_workflow.py || {
+            print_warning "Migration script execution completed with warnings (this may be normal if already migrated)"
+        }
+    else
+        print_info "No migration script found, ensuring database is up to date..."
+        $PYTHON_CMD -c "
+from app import app, db
+with app.app_context():
+    db.create_all()
+    print('Database schema updated!')
+" || {
+            print_warning "Database update had warnings (this may be normal)"
+        }
+    fi
+    
+    deactivate
     
     # Ensure correct ownership and permissions for critical files
     chown -R ${SYSTEM_USER}:${SYSTEM_GROUP} "$INSTALL_DIR"
@@ -1112,6 +1166,17 @@ fresh_installation() {
     print_info "Creating instance directory for database..."
     mkdir -p "${INSTALL_DIR}/instance"
     
+    # Create uploads directory structure for photo workflow
+    print_info "Creating uploads directory structure..."
+    mkdir -p "${INSTALL_DIR}/uploads/batches"
+    mkdir -p "${INSTALL_DIR}/uploads/processed"
+    mkdir -p "${INSTALL_DIR}/qr_codes"
+    
+    # Set proper permissions for upload directories
+    print_info "Setting permissions for upload directories..."
+    chmod -R 755 "${INSTALL_DIR}/uploads" 2>/dev/null || true
+    chmod -R 755 "${INSTALL_DIR}/qr_codes" 2>/dev/null || true
+    
     # Initialize database
     print_info "Initializing database..."
     source "${VENV_DIR}/bin/activate"
@@ -1134,8 +1199,8 @@ PYEOF
     deactivate
     
     # Verify database was created
-    if [[ -f "${INSTALL_DIR}/instance/photo_registration.db" ]]; then
-        print_success "Database created: ${INSTALL_DIR}/instance/photo_registration.db"
+    if [[ -f "${DB_FILE}" ]]; then
+        print_success "Database created: ${DB_FILE}"
     else
         print_warning "Database file not found in expected location"
         print_info "It will be created on first run"

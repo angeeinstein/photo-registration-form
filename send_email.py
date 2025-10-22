@@ -302,14 +302,16 @@ def create_email_sender_from_account(account) -> Optional[EmailSender]:
 
 # Convenience functions for common email types
 
-def send_confirmation_email(to_email: str, first_name: str, last_name: str, account=None) -> bool:
+def send_confirmation_email(to_email: str, first_name: str, last_name: str, registration_id: int = None, qr_token: str = None, account=None) -> bool:
     """
-    Send registration confirmation email
+    Send registration confirmation email with QR code
     
     Args:
         to_email: Recipient email address
         first_name: Recipient's first name
         last_name: Recipient's last name
+        registration_id: Database registration ID (optional, for QR code)
+        qr_token: Unique QR token (optional, for QR code)
         account: EmailAccount object (optional, uses default if not provided)
         
     Returns:
@@ -337,6 +339,27 @@ def send_confirmation_email(to_email: str, first_name: str, last_name: str, acco
         'full_name': f"{first_name} {last_name}",
         'email': to_email
     }
+    
+    # Generate QR code if registration_id and qr_token are provided
+    if registration_id and qr_token:
+        try:
+            from qr_generator import generate_qr_code_inline
+            qr_code_data_uri = generate_qr_code_inline(
+                first_name=first_name,
+                last_name=last_name,
+                email=to_email,
+                registration_id=registration_id,
+                qr_token=qr_token,
+                size=300
+            )
+            variables['qr_code_data_uri'] = qr_code_data_uri
+            logger.info(f"QR code generated for registration {registration_id}")
+        except Exception as e:
+            logger.error(f"Failed to generate QR code: {e}")
+            # Continue without QR code - email will still be sent
+            variables['qr_code_data_uri'] = None
+    else:
+        variables['qr_code_data_uri'] = None
     
     # Get subject from environment or use default
     subject = os.getenv('CONFIRMATION_EMAIL_SUBJECT', 'Registration Confirmation')

@@ -5,3 +5,16 @@ Flask-Limiter==3.5.0
 gunicorn==21.2.0
 python-dotenv==1.0.0
 email-validator==2.1.0
+
+# QR Code generation
+qrcode[pil]==7.4.2
+Pillow==10.1.0
+
+# Photo processing and QR code detection
+opencv-python==4.8.1.78
+pyzbar==0.1.9
+
+# Google Drive API (to be used later)
+# google-api-python-client==2.108.0
+# google-auth-httplib2==0.1.1
+# google-auth-oauthlib==1.1.0

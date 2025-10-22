@@ -79,11 +79,43 @@
                 <strong>Email:</strong> {{email}}
             </div>
             
+            {% if qr_code_data_uri %}
+            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 20px; margin: 25px 0; border-radius: 4px;">
+                <h2 style="color: #856404; margin-top: 0; font-size: 20px;">📸 IMPORTANT: Your Personal QR Code</h2>
+                
+                <p style="margin: 15px 0; font-weight: bold; color: #856404;">
+                    Please save this QR code! You'll need it during your photo session.
+                </p>
+                
+                <div style="text-align: center; margin: 20px 0;">
+                    <img src="{{ qr_code_data_uri }}" alt="Your Personal QR Code" style="width: 300px; height: 300px; border: 3px solid #333; border-radius: 8px; background: white; padding: 10px;">
+                </div>
+                
+                <div style="background-color: white; padding: 15px; border-radius: 4px; margin: 15px 0;">
+                    <p style="margin: 0 0 10px 0; font-weight: bold; color: #333;">📱 How to use your QR code:</p>
+                    <ol style="margin: 5px 0; padding-left: 20px; color: #333;">
+                        <li><strong>Save this email</strong> or take a screenshot of the QR code</li>
+                        <li><strong>At your photo session:</strong> Open this email on your phone</li>
+                        <li><strong>For the FIRST photo:</strong> Hold your phone showing this QR code in front of you</li>
+                        <li><strong>Remaining photos:</strong> No QR code needed - just pose naturally!</li>
+                        <li><strong>We'll match all your photos</strong> automatically and send them to you via email</li>
+                    </ol>
+                </div>
+                
+                <div style="background-color: #d1ecf1; border: 1px solid #bee5eb; padding: 12px; border-radius: 4px; margin-top: 15px;">
+                    <p style="margin: 0; color: #0c5460; font-size: 14px;">
+                        <strong>💡 Tip:</strong> The QR code contains your name and email, so even if our database is lost, we can still identify your photos!
+                    </p>
+                </div>
+            </div>
+            {% endif %}
+            
             <p><strong>What happens next?</strong></p>
             <ul>
-                <li>Visit our photo booth at the fair</li>
-                <li>Let us know your name when taking photos</li>
-                <li>We'll send your photos to this email address shortly after the event</li>
+                <li><strong>At the event:</strong> Show your QR code (from this email) in your first photo</li>
+                <li><strong>Photographer takes your photos</strong> - your first photo includes the QR code, the rest are regular photos</li>
+                <li><strong>After the event:</strong> We process all photos and automatically group yours together</li>
+                <li><strong>You receive an email</strong> with a link to download all your photos</li>
             </ul>
             
             <p>If you have any questions or didn't register for this service, please contact us.</p>
