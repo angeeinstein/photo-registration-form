@@ -255,7 +255,17 @@ class PhotoProcessor:
                 
                 # Detect QR code
                 self._update_batch_status(current_action=f"Detecting QR code in {photo.filename}...")
+                self._log_action(
+                    "qr_detection_started",
+                    f"Detecting QR in {photo.filename} ({idx}/{total_photos})"
+                )
+                
                 qr_result = detect_qr_in_image(str(photo_path), enhance=True)
+                
+                self._log_action(
+                    "qr_detection_completed",
+                    f"QR detection completed for {photo.filename} - Detected: {qr_result.detected}"
+                )
                 
                 if qr_result.detected and qr_result.parsed_data:
                     # QR code detected - start new person
@@ -291,7 +301,17 @@ class PhotoProcessor:
                         f"Processed {idx}/{total_photos} photos ({progress_pct}%) - {self.people_found} people found"
                     )
             
+            # Loop completed - log this clearly
+            self._log_action(
+                "phase1_loop_completed",
+                f"All {total_photos} photos processed in Phase 1 loop"
+            )
+            
             # Save last person's photos (local only)
+            self._log_action(
+                "phase1_saving_last_person",
+                "Saving last person's photos..."
+            )
             self._save_current_person()
             
             self._log_action(

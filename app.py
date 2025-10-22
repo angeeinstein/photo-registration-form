@@ -1758,7 +1758,9 @@ def process_photo_batch_page(batch_id):
 @app.route('/admin/photos/process/<int:batch_id>/start', methods=['POST'])
 @login_required
 def start_batch_processing(batch_id):
-    """Start processing a batch (API endpoint)"""
+    """Start processing a batch (API endpoint) - runs in background thread"""
+    import threading
+    
     try:
         from photo_processor import PhotoProcessor
         
@@ -1771,14 +1773,28 @@ def start_batch_processing(batch_id):
                 'error': f'Batch cannot be processed in current status: {batch.status}'
             }), 400
         
-        # Start processing in background
-        # For now, process synchronously - can be moved to Celery/threading later
-        processor = PhotoProcessor(batch_id)
-        metrics = processor.process_batch()
+        # Start processing in background thread
+        def process_in_background():
+            """Background processing function"""
+            try:
+                with app.app_context():
+                    processor = PhotoProcessor(batch_id)
+                    metrics = processor.process_batch()
+                    app.logger.info(f'Batch {batch_id} processing completed: {metrics}')
+            except Exception as e:
+                app.logger.error(f'Background processing error for batch {batch_id}: {str(e)}')
+                import traceback
+                app.logger.error(traceback.format_exc())
         
+        # Start background thread
+        thread = threading.Thread(target=process_in_background, daemon=True)
+        thread.start()
+        
+        # Return immediately
         return jsonify({
             'success': True,
-            'metrics': metrics
+            'message': 'Processing started in background',
+            'batch_id': batch_id
         })
         
     except Exception as e:
