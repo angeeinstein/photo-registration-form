@@ -50,9 +50,9 @@ def migrate_database():
         
         print("\n📝 Adding columns to registration table...")
         
-        # Add new columns to Registration table
+        # Add new columns to Registration table (without UNIQUE constraint initially)
         migrations = [
-            ("qr_token", "ALTER TABLE registration ADD COLUMN qr_token VARCHAR(100) UNIQUE"),
+            ("qr_token", "ALTER TABLE registration ADD COLUMN qr_token VARCHAR(100)"),
             ("photo_count", "ALTER TABLE registration ADD COLUMN photo_count INTEGER DEFAULT 0"),
             ("drive_folder_id", "ALTER TABLE registration ADD COLUMN drive_folder_id VARCHAR(200)"),
             ("drive_share_link", "ALTER TABLE registration ADD COLUMN drive_share_link VARCHAR(500)"),
@@ -135,7 +135,6 @@ def migrate_database():
             "CREATE INDEX IF NOT EXISTS idx_photo_registration_id ON photo(registration_id)",
             "CREATE INDEX IF NOT EXISTS idx_photo_filename ON photo(filename)",
             "CREATE INDEX IF NOT EXISTS idx_processing_log_batch_id ON processing_log(batch_id)",
-            "CREATE INDEX IF NOT EXISTS idx_registration_qr_token ON registration(qr_token)",
         ]
         
         for idx_sql in indexes:
@@ -155,6 +154,15 @@ def migrate_database():
             print(f"  ✅ Generated QR tokens for {len(registrations_without_token)} existing registrations")
         else:
             print("  ℹ️  All registrations already have QR tokens")
+        
+        # Create UNIQUE index on qr_token after all tokens are generated
+        print("\n📝 Creating UNIQUE index on qr_token...")
+        try:
+            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_registration_qr_token_unique ON registration(qr_token) WHERE qr_token IS NOT NULL")
+            print("  ✅ UNIQUE index created on qr_token")
+        except Exception as e:
+            print(f"  ⚠️  Could not create UNIQUE index: {e}")
+            print("  ℹ️  This is not critical, continuing...")
         
         # Commit changes
         conn.commit()
