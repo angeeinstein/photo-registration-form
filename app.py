@@ -524,8 +524,9 @@ def register():
         return jsonify({'error': f'Registration failed: {str(e)}'}), 500
 
 @app.route('/registrations', methods=['GET'])
+@login_required  # Add authentication requirement
 def list_registrations():
-    """List all registrations (admin view)"""
+    """List all registrations (admin view - requires authentication)"""
     try:
         registrations = Registration.query.order_by(Registration.registered_at.desc()).all()
         return jsonify({
@@ -632,6 +633,61 @@ def admin_dashboard():
                 error='Database schema mismatch detected. The database needs to be migrated to support new photo workflow features. Please run the migration script.'), 500
         # Re-raise for general error handler
         raise
+
+@app.route('/admin/export/registrations.csv')
+@login_required
+def export_registrations_csv():
+    """Export all registrations as CSV"""
+    import csv
+    from io import StringIO
+    from flask import make_response
+    
+    try:
+        registrations = Registration.query.order_by(Registration.registered_at.desc()).all()
+        
+        # Create CSV in memory
+        si = StringIO()
+        writer = csv.writer(si)
+        
+        # Write header
+        writer.writerow([
+            'ID',
+            'First Name',
+            'Last Name',
+            'Email',
+            'Registered At',
+            'Confirmation Sent',
+            'Photos Sent',
+            'Photo Count',
+            'Drive Share Link',
+            'QR Token'
+        ])
+        
+        # Write data rows
+        for reg in registrations:
+            writer.writerow([
+                reg.id,
+                reg.first_name,
+                reg.last_name,
+                reg.email,
+                reg.registered_at.strftime('%Y-%m-%d %H:%M:%S') if reg.registered_at else '',
+                'Yes' if reg.confirmation_sent else 'No',
+                'Yes' if reg.photos_sent else 'No',
+                reg.photo_count or 0,
+                reg.drive_share_link or '',
+                reg.qr_token or ''
+            ])
+        
+        # Create response
+        output = make_response(si.getvalue())
+        output.headers["Content-Disposition"] = "attachment; filename=registrations.csv"
+        output.headers["Content-type"] = "text/csv"
+        
+        return output
+        
+    except Exception as e:
+        app.logger.error(f'Error exporting CSV: {str(e)}')
+        return "Error exporting CSV", 500
 
 @app.route('/admin/registration/<int:registration_id>/qr-code')
 @login_required

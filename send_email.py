@@ -580,7 +580,7 @@ def send_photo_delivery_email(
     }
     
     # Get subject from environment or use default
-    subject = os.getenv('PHOTOS_DELIVERY_SUBJECT', f'📸 Your Photos from {event_name} Are Ready!')
+    subject = os.getenv('PHOTOS_DELIVERY_SUBJECT', f'Your Photos from {event_name} Are Ready!')
     
     return sender.send_template_email(
         to_email=to_email,

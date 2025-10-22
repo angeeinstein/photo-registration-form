@@ -107,11 +107,11 @@
 </head>
 <body>
     <div class="header">
-        <h1>⚙️ Application Settings</h1>
+        <h1>Application Settings</h1>
         <div class="nav-links">
-            <a href="{{ url_for('admin_email_accounts') }}">📧 Email Accounts</a>
-            <a href="{{ url_for('admin_drive_settings') }}" style="background: #4285F4; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; margin-right: 10px;">🔐 Google Drive</a>
-            <a href="{{ url_for('admin_dashboard') }}">← Back to Dashboard</a>
+            <a href="{{ url_for('admin_email_accounts') }}">Email Accounts</a>
+            <a href="{{ url_for('admin_drive_settings') }}" style="background: #4285F4; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; margin-right: 10px;">Google Drive</a>
+            <a href="{{ url_for('admin_dashboard') }}">Back to Dashboard</a>
         </div>
     </div>
 
@@ -128,7 +128,7 @@
     <div class="content">
         {% if email_accounts|length == 0 %}
         <div class="info-box" style="background: #fff3cd; border-left-color: #ffc107;">
-            <strong>⚠️ No Email Accounts Configured</strong><br>
+            <strong>No Email Accounts Configured</strong><br>
             Please <a href="{{ url_for('admin_email_accounts') }}">add at least one email account</a> to send emails.
         </div>
         {% endif %}
@@ -136,7 +136,7 @@
         <form method="POST" action="{{ url_for('admin_settings') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-section">
-                <h2>📬 Email Behavior</h2>
+                <h2>Email Behavior</h2>
                 
                 <div class="setting-item">
                     <div>
@@ -152,7 +152,7 @@
             </div>
 
             <div class="form-section">
-                <h2>📧 Default Email Accounts</h2>
+                <h2>Default Email Accounts</h2>
                 <p style="color: #666; margin-bottom: 20px; font-size: 14px;">
                     Select which email account to use for each type of email operation.
                 </p>
@@ -215,24 +215,28 @@
                 </div>
             </div>
 
-            <button type="submit" class="btn btn-primary">💾 Save Settings</button>
+            <button type="submit" class="btn btn-primary">Save Settings</button>
         </form>
 
         <div class="settings-card" style="margin-top: 30px;">
-            <h3>🔧 Quick Links</h3>
+            <h3>Google Drive OAuth</h3>
+            <div class="setting-item">
+                <div>
+                    <div class="setting-label">OAuth 2.0 Connection</div>
+                    <div class="setting-description">Connect your Google account to upload photos to your Drive</div>
+                </div>
+                <a href="{{ url_for('admin_drive_oauth') }}" class="btn btn-primary">Configure Drive OAuth</a>
+            </div>
+        </div>
+
+        <div class="settings-card" style="margin-top: 20px;">
+            <h3>Email Accounts</h3>
             <div class="setting-item">
                 <div>
                     <div class="setting-label">Manage Email Accounts</div>
                     <div class="setting-description">Add, edit, test, and configure SMTP accounts</div>
                 </div>
-                <a href="{{ url_for('admin_email_accounts') }}" class="btn btn-primary">Go to Email Accounts</a>
-            </div>
-            <div class="setting-item">
-                <div>
-                    <div class="setting-label">View Registrations</div>
-                    <div class="setting-description">See all registrations and send photos</div>
-                </div>
-                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Go to Dashboard</a>
+                <a href="{{ url_for('admin_email_accounts') }}" class="btn btn-primary">Manage Email Accounts</a>
             </div>
         </div>
     </div>

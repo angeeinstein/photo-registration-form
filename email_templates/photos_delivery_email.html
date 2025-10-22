@@ -135,7 +135,7 @@
 <body>
     <div class="email-container">
         <div class="header">
-            <h1>📸 Your Photos Are Ready!</h1>
+            <h1>Your Photos Are Ready!</h1>
         </div>
 
         <p class="greeting">Hi {{ first_name }},</p>
@@ -148,12 +148,12 @@
             <h2>Your Personal Photo Collection</h2>
             <div class="photo-count">{{ photo_count }} Photo{% if photo_count != 1 %}s{% endif %}</div>
             <a href="{{ drive_link }}" class="drive-button" target="_blank">
-                🔗 View & Download Your Photos
+                View & Download Your Photos
             </a>
         </div>
 
         <div class="instructions">
-            <h3>💾 How to Download Your Photos:</h3>
+            <h3>How to Download Your Photos:</h3>
             <ol>
                 <li>Click the button above to open your Google Drive folder</li>
                 <li>To download all photos at once:
@@ -169,7 +169,7 @@
 
         <div class="note">
             <p>
-                <strong>📅 Important:</strong> Your photos will be available for download for the next 
+                <strong>Important:</strong> Your photos will be available for download for the next 
                 <strong>{{ retention_days }} days</strong>. Please download them before 
                 <strong>{{ expiry_date }}</strong>.
             </p>

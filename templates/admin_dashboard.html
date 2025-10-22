@@ -14,12 +14,11 @@
     </div>
 
     <div class="header">
-        <h1>📊 Admin Dashboard</h1>
+        <h1>Admin Dashboard</h1>
         <div class="nav-links">
-            <a href="{{ url_for('admin_photo_upload') }}" style="background: #4CAF50; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; margin-right: 10px;">📸 Upload Photos</a>
-            <a href="{{ url_for('admin_drive_oauth') }}" style="background: #4285f4; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; margin-right: 10px;">🔐 Drive OAuth</a>
-            <a href="{{ url_for('admin_settings') }}">⚙️ Settings</a>
-            <a href="{{ url_for('admin_logout') }}">🚪 Logout</a>
+            <a href="{{ url_for('admin_photo_upload') }}" style="background: #4CAF50; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; margin-right: 10px;">Upload Photos</a>
+            <a href="{{ url_for('admin_settings') }}">Settings</a>
+            <a href="{{ url_for('admin_logout') }}">Logout</a>
         </div>
     </div>
 
@@ -67,9 +66,14 @@
     <div class="content">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h2>Registrations</h2>
-            <button class="btn btn-danger" onclick="showDeleteAllModal()" style="padding: 8px 16px; font-size: 14px;">
-                🗑️ Delete All
-            </button>
+            <div>
+                <a href="{{ url_for('export_registrations_csv') }}" class="btn" style="background: #28a745; color: white; text-decoration: none; padding: 8px 16px; margin-right: 10px;">
+                    Download CSV
+                </a>
+                <button class="btn btn-danger" onclick="showDeleteAllModal()" style="padding: 8px 16px; font-size: 14px;">
+                    Delete All
+                </button>
+            </div>
         </div>
         
         <table>

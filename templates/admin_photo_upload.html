@@ -459,7 +459,7 @@
         const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
         const MAX_FILES = 2000;
         const ALLOWED_TYPES = ['image/jpeg', 'image/jpg'];
-        const CHUNK_SIZE = 5; // Upload 5 files at a time
+        const CHUNK_SIZE = 1; // Upload 1 file at a time (changed from 5 for reliability with large files)
 
         // State
         let selectedFiles = [];
@@ -608,13 +608,13 @@
             }
         }
 
-        // Upload files in chunks
+        // Upload files in chunks (one at a time for reliability)
         async function uploadFilesInChunks() {
-            for (let i = 0; i < selectedFiles.length; i += CHUNK_SIZE) {
-                const chunk = selectedFiles.slice(i, i + CHUNK_SIZE);
-                await Promise.all(chunk.map(file => uploadFile(file, i)));
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                await uploadFile(file, i);
                 
-                // Update metrics after each chunk
+                // Update metrics after each file
                 updateMetrics();
             }
 
@@ -622,14 +622,16 @@
             completeUpload();
         }
 
-        // Upload single file
-        async function uploadFile(file, index) {
+        // Upload single file with retry logic
+        async function uploadFile(file, index, retryCount = 0) {
+            const MAX_RETRIES = 3;
             const formData = new FormData();
             formData.append('file', file);
             formData.append('batch_id', currentBatchId);
 
             // Update current file display
-            document.getElementById('currentFileName').textContent = file.name;
+            const fileSize = (file.size / (1024 * 1024)).toFixed(2);
+            document.getElementById('currentFileName').textContent = `${file.name} (${fileSize} MB)`;
 
             try {
                 const response = await fetch('/admin/photos/upload-file', {
@@ -640,17 +642,32 @@
                     body: formData
                 });
 
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
                 const data = await response.json();
                 
                 if (data.success) {
                     uploadedFiles.push(file);
                     totalBytesUploaded += file.size;
+                    console.log(`✓ Uploaded ${file.name} (${fileSize} MB)`);
                 } else {
-                    console.error('Upload failed for', file.name, data.error);
+                    throw new Error(data.error || 'Upload failed');
                 }
 
             } catch (error) {
-                console.error('Upload error for', file.name, error);
+                console.error(`✗ Upload error for ${file.name}:`, error.message);
+                
+                // Retry logic
+                if (retryCount < MAX_RETRIES) {
+                    console.log(`Retrying ${file.name} (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+                    return uploadFile(file, index, retryCount + 1);
+                } else {
+                    console.error(`Failed to upload ${file.name} after ${MAX_RETRIES} attempts`);
+                    alert(`Failed to upload ${file.name}. Please try again.`);
+                }
             }
         }
 
