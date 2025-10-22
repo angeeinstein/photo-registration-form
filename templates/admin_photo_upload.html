@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Photo Upload - Admin Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v={{ range(1, 10000) | random }}">
     <style>
@@ -449,6 +450,11 @@
     </div>
 
     <script>
+        // Get CSRF token from meta tag
+        function getCsrfToken() {
+            return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        }
+
         // Configuration
         const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
         const MAX_FILES = 2000;
@@ -576,6 +582,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
                     },
                     body: JSON.stringify({
                         batch_name: batchName,
@@ -627,6 +634,9 @@
             try {
                 const response = await fetch('/admin/photos/upload-file', {
                     method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCsrfToken()
+                    },
                     body: formData
                 });
 
@@ -685,7 +695,10 @@
 
             // Mark batch as uploaded
             fetch(`/admin/photos/batch-uploaded/${currentBatchId}`, {
-                method: 'POST'
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCsrfToken()
+                }
             }).catch(err => console.error('Failed to mark batch as uploaded:', err));
         }
     </script>
