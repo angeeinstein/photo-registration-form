@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import logging
 
-from qr_detector import QRDetector
+from qr_detector import detect_qr_in_image, parse_qr_data
 from models import db, PhotoBatch, Photo, Registration, ProcessingLog
 try:
     from drive_uploader import DriveUploader
@@ -37,7 +37,7 @@ class PhotoProcessor:
         if not self.batch:
             raise ValueError(f"Batch {batch_id} not found")
         
-        self.qr_detector = QRDetector()
+        # No need for QR detector instance - using functions directly
         self.current_person = None
         self.current_person_photos = []
         self.unmatched_photos = []
@@ -309,15 +309,15 @@ class PhotoProcessor:
                 
                 # Detect QR code
                 self._update_batch_status(current_action=f"Detecting QR code in {photo.filename}...")
-                qr_data = self.qr_detector.detect_qr(str(photo_path))
+                qr_result = detect_qr_in_image(str(photo_path), enhance=True)
                 
-                if qr_data:
+                if qr_result.detected and qr_result.parsed_data:
                     # QR code detected - start new person
                     self._update_batch_status(
                         current_action=f"QR detected in {photo.filename}, matching registration..."
                     )
                     
-                    registration = self._match_registration(qr_data)
+                    registration = self._match_registration(qr_result.parsed_data)
                     
                     if registration:
                         self._start_new_person(registration, photo, drive_uploader=drive_uploader)
