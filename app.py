@@ -359,7 +359,21 @@ def ratelimit_handler(e):
 @app.errorhandler(500)
 def internal_error(e):
     """Handle internal server errors"""
-    return jsonify({'error': 'An internal error occurred. Please try again later.'}), 500
+    # Log the error
+    app.logger.error(f'Internal error: {str(e)}')
+    
+    # Check if request expects JSON
+    if request.path.startswith('/api/') or request.headers.get('Accept') == 'application/json':
+        return jsonify({'error': 'An internal error occurred. Please try again later.'}), 500
+    
+    # For HTML requests, return a proper error page
+    error_message = 'An internal error occurred. Please try again later.'
+    
+    # Add helpful message for database errors
+    if 'no such column' in str(e).lower() or 'operational error' in str(e).lower():
+        error_message = 'Database error detected. Please run the migration script or contact the administrator.'
+    
+    return render_template('error.html', error=error_message), 500
 
 # Routes
 @app.route('/')
@@ -543,28 +557,37 @@ def admin_logout():
 @login_required
 def admin_dashboard():
     """Admin dashboard"""
-    registrations = Registration.query.order_by(Registration.registered_at.desc()).all()
-    
-    # Get email accounts
-    email_accounts = EmailAccount.query.filter_by(is_active=True).all()
-    default_account = EmailAccount.get_default()
-    email_configured = default_account is not None
-    
-    send_confirmation = os.getenv('SEND_CONFIRMATION_EMAIL', 'true').lower() == 'true'
-    
-    stats = {
-        'total_registrations': len(registrations),
-        'confirmation_sent': sum(1 for r in registrations if r.confirmation_sent),
-        'photos_sent': sum(1 for r in registrations if r.photos_sent),
-        'email_configured': email_configured,
-        'auto_confirmation': send_confirmation
-    }
-    
-    return render_template('admin_dashboard.html', 
-                         registrations=registrations, 
-                         stats=stats,
-                         email_accounts=email_accounts,
-                         default_account=default_account)
+    try:
+        registrations = Registration.query.order_by(Registration.registered_at.desc()).all()
+        
+        # Get email accounts
+        email_accounts = EmailAccount.query.filter_by(is_active=True).all()
+        default_account = EmailAccount.get_default()
+        email_configured = default_account is not None
+        
+        send_confirmation = os.getenv('SEND_CONFIRMATION_EMAIL', 'true').lower() == 'true'
+        
+        stats = {
+            'total_registrations': len(registrations),
+            'confirmation_sent': sum(1 for r in registrations if r.confirmation_sent),
+            'photos_sent': sum(1 for r in registrations if r.photos_sent),
+            'email_configured': email_configured,
+            'auto_confirmation': send_confirmation
+        }
+        
+        return render_template('admin_dashboard.html', 
+                             registrations=registrations, 
+                             stats=stats,
+                             email_accounts=email_accounts,
+                             default_account=default_account)
+    except Exception as e:
+        app.logger.error(f'Error in admin dashboard: {str(e)}')
+        # Check if it's a database schema issue
+        if 'no such column' in str(e).lower() or 'operational' in str(e).lower():
+            return render_template('error.html', 
+                error='Database schema mismatch detected. The database needs to be migrated to support new photo workflow features. Please run the migration script.'), 500
+        # Re-raise for general error handler
+        raise
 
 @app.route('/admin/settings', methods=['GET', 'POST'])
 @login_required
