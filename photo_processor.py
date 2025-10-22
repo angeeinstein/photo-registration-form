@@ -11,7 +11,8 @@ from typing import List, Dict, Optional, Tuple
 import logging
 
 from qr_detector import detect_qr_in_image, parse_qr_data
-from models import db, PhotoBatch, Photo, Registration, ProcessingLog
+# Import models from app.py where they are defined
+from app import db, PhotoBatch, Photo, Registration, ProcessingLog
 try:
     from drive_uploader import DriveUploader
 except Exception:
