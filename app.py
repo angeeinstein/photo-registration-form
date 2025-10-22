@@ -5,6 +5,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.utils import secure_filename
 from datetime import datetime
+from pathlib import Path
 import os
 import json
 from dotenv import load_dotenv
@@ -1425,8 +1426,8 @@ def process_photo_batch_page(batch_id):
     """Display processing page with real-time metrics"""
     batch = PhotoBatch.query.get_or_404(batch_id)
     
-    # Check if batch is ready to process
-    if batch.status not in ['uploaded', 'error']:
+    # Allow viewing progress during processing, or starting new processing
+    if batch.status not in ['uploaded', 'error', 'processing', 'completed']:
         flash(f'Batch cannot be processed in current status: {batch.status}', 'error')
         return redirect(url_for('admin_dashboard'))
     
@@ -1506,6 +1507,47 @@ def get_processing_status(batch_id):
             'success': False,
             'error': str(e)
         }), 500
+
+@app.route('/admin/photos/batch/<int:batch_id>/delete', methods=['POST'])
+@login_required
+def delete_photo_batch(batch_id):
+    """Delete a photo batch and all associated data"""
+    try:
+        batch = PhotoBatch.query.get_or_404(batch_id)
+        batch_name = batch.batch_name
+        
+        # Delete all photos in this batch
+        photos = Photo.query.filter_by(batch_id=batch_id).all()
+        photo_count = len(photos)
+        for photo in photos:
+            db.session.delete(photo)
+        
+        # Delete all processing logs
+        logs = ProcessingLog.query.filter_by(batch_id=batch_id).all()
+        log_count = len(logs)
+        for log in logs:
+            db.session.delete(log)
+        
+        # Delete the batch itself
+        db.session.delete(batch)
+        db.session.commit()
+        
+        # Delete physical files
+        import shutil
+        batch_dir = Path(f"uploads/batches/{batch_id}")
+        if batch_dir.exists():
+            shutil.rmtree(batch_dir)
+            app.logger.info(f"Deleted batch directory: {batch_dir}")
+        
+        flash(f'Batch "{batch_name}" deleted successfully ({photo_count} photos, {log_count} logs)', 'success')
+        app.logger.info(f"Deleted batch {batch_id}: {batch_name}")
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f'Error deleting batch {batch_id}: {str(e)}')
+        flash(f'Error deleting batch: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_dashboard'))
 
 @app.route('/admin/photos/batch-results/<int:batch_id>')
 @login_required

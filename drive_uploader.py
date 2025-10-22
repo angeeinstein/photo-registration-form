@@ -380,6 +380,10 @@ class DriveUploader:
                 progress_callback=upload_progress
             )
             
+            # Check if all uploads failed (critical error like storage quota)
+            if successful == 0 and failed > 0:
+                raise Exception(f"All {failed} photo uploads failed. Check Drive permissions and storage quota.")
+            
             # Step 3: Generate share link
             if progress_callback:
                 progress_callback('generating_link', "Generating shareable link...")
@@ -387,13 +391,13 @@ class DriveUploader:
             share_link = self.generate_share_link(folder_id)
             
             return {
-                'success': True,
+                'success': successful > 0,  # Only success if at least one photo uploaded
                 'folder_id': folder_id,
                 'folder_name': folder_name,
                 'share_link': share_link,
                 'photos_uploaded': successful,
                 'photos_failed': failed,
-                'error': None
+                'error': f"{failed} photos failed to upload" if failed > 0 else None
             }
             
         except Exception as e:
