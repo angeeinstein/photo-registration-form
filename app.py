@@ -548,6 +548,7 @@ def health():
 
 @app.route('/api/registrations/updates', methods=['GET'])
 @login_required
+@limiter.exempt  # Exempt from rate limiting - used for dashboard live polling
 def get_registration_updates():
     """API endpoint for live dashboard updates"""
     try:
@@ -2037,12 +2038,7 @@ def send_individual_photo_email(registration_id):
                 'error': 'No Google Drive link available for this person'
             }), 400
         
-        # Check if email already sent
-        if person.photos_email_sent:
-            return jsonify({
-                'success': False,
-                'error': 'Email already sent to this person'
-            }), 400
+        # Allow resending (removed the check that prevented resending)
         
         # Get default email account
         email_account = EmailAccount.query.filter_by(is_default=True, is_active=True).first()

@@ -394,10 +394,9 @@
                                 {% if person.drive_share_link %}
                                     <button id="sendBtn-{{ person.id }}" 
                                             class="btn btn-info btn-small" 
-                                            onclick="sendEmail(JSON.parse('{{ person.id | tojson | safe }}'))"
-                                            {% if person.photos_email_sent %}disabled{% endif %}>
+                                            onclick="sendEmail(JSON.parse('{{ person.id | tojson | safe }}'))">
                                         {% if person.photos_email_sent %}
-                                            ✓ Sent
+                                            📧 Resend
                                         {% else %}
                                             📧 Send
                                         {% endif %}
@@ -455,6 +454,7 @@
         async function sendEmail(registrationId) {
             const btn = document.getElementById(`sendBtn-${registrationId}`);
             const originalText = btn.textContent;
+            const isResend = originalText.includes('Resend');
             
             try {
                 btn.disabled = true;
@@ -474,10 +474,11 @@
                     const statusCell = document.getElementById(`status-${registrationId}`);
                     statusCell.innerHTML = '<span class="badge badge-success">✓ Sent</span><br><small style="color: #718096;">Just now</small>';
                     
-                    // Update button
-                    btn.textContent = '✓ Sent';
+                    // Update button to show Resend for next time
+                    btn.textContent = '📧 Resend';
+                    btn.disabled = false;
                     
-                    showAlert(`✓ Email sent successfully to ${data.person_name}`, 'success');
+                    showAlert(`✓ Email ${isResend ? 'resent' : 'sent'} successfully to ${data.person_name}`, 'success');
                     
                     // Update "Send All" button count
                     updateSendAllButton();

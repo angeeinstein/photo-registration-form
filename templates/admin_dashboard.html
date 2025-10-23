@@ -38,12 +38,14 @@
             <div class="value">{{ stats.total_registrations }}</div>
         </div>
         <div class="stat-card">
-            <h3>Confirmations Sent</h3>
+            <h3>Email Validated</h3>
             <div class="value">{{ stats.confirmation_sent }}</div>
+            <small style="color: #666; font-size: 12px;">Confirmation email sent</small>
         </div>
         <div class="stat-card">
-            <h3>Photos Sent</h3>
+            <h3>Manual Photo Sends</h3>
             <div class="value">{{ stats.photos_sent }}</div>
+            <small style="color: #666; font-size: 12px;">Old workflow (dashboard link entry)</small>
         </div>
         <div class="stat-card">
             <h3>Email Status</h3>
@@ -98,12 +100,18 @@
                     <td>{{ reg.registered_at.strftime('%Y-%m-%d %H:%M') }}</td>
                     <td>
                         {% if reg.confirmation_sent %}
-                            <span class="badge sent">✓ Confirmed</span>
+                            <span class="badge sent" title="Confirmation email was sent to validate their email address">✓ Email Valid</span>
                         {% else %}
-                            <span class="badge pending">⏳ Pending</span>
+                            <span class="badge pending" title="Waiting for confirmation email">⏳ Not Confirmed</span>
                         {% endif %}
                         {% if reg.photos_sent %}
-                            <span class="badge sent">📷 Photos Sent</span>
+                            <span class="badge sent" title="Old manual workflow - photos link was sent via dashboard">📷 Manual Send</span>
+                        {% endif %}
+                        {% if reg.drive_share_link %}
+                            <span class="badge" style="background: #4CAF50;" title="Photos processed via batch workflow with Google Drive link">🔗 Has Drive Link</span>
+                        {% endif %}
+                        {% if reg.photos_email_sent %}
+                            <span class="badge" style="background: #2196F3;" title="Photo delivery email sent automatically">📧 Email Sent</span>
                         {% endif %}
                     </td>
                     <td>
@@ -113,13 +121,21 @@
                             </button>
                             <form method="POST" action="{{ url_for('admin_resend_confirmation', registration_id=reg.id) }}" style="display: inline; margin-right: 5px;">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="btn btn-info" style="background: #17a2b8;">📧 Resend</button>
+                                <button type="submit" class="btn btn-info" style="background: #17a2b8;" title="Resend confirmation email">📧 Confirm</button>
                             </form>
-                            <form method="POST" action="{{ url_for('admin_send_photos', registration_id=reg.id) }}" style="display: inline;">
+                            {% if reg.drive_share_link %}
+                            <button onclick="resendDriveLink({{ reg.id }}, '{{ reg.first_name }} {{ reg.last_name }}')" 
+                                    class="btn" style="background: #4CAF50; color: white; margin-right: 5px;" 
+                                    title="Resend Drive folder link email">
+                                🔗 Resend Drive Link
+                            </button>
+                            {% else %}
+                            <form method="POST" action="{{ url_for('admin_send_photos', registration_id=reg.id) }}" style="display: inline; margin-right: 5px;">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="text" name="photos_link" placeholder="Photos link (optional)" style="width: 200px; padding: 6px; border: 1px solid #e0e0e0; border-radius: 4px;">
-                                <button type="submit" class="btn btn-success">📷 Send Photos</button>
+                                <button type="submit" class="btn btn-success" title="Old manual workflow">📷 Send Photos (Manual)</button>
                             </form>
+                            {% endif %}
                             <form method="POST" action="{{ url_for('admin_delete_registration', registration_id=reg.id) }}" style="display: inline; margin-left: 10px;" onsubmit="return confirm('Are you sure you want to delete this registration for {{ reg.first_name }} {{ reg.last_name }}?');">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-danger" style="background: #dc3545;">🗑️ Delete</button>
@@ -540,6 +556,34 @@
             modal.style.display = 'none';
             // Clear image source (no need to revoke blob URL since we're using data URI)
             qrImage.src = '';
+        }
+
+        // Resend Drive link email
+        async function resendDriveLink(registrationId, personName) {
+            if (!confirm(`Resend Google Drive folder link to ${personName}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/admin/photos/send-email/${registrationId}`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': '{{ csrf_token() }}'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert(`✓ Drive link email resent successfully to ${personName}!`);
+                    location.reload(); // Reload to update status badges
+                } else {
+                    alert(`Failed to resend email: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error resending Drive link:', error);
+                alert(`Error: ${error.message}`);
+            }
         }
 
         // Close QR modal when clicking outside
