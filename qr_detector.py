@@ -156,9 +156,9 @@ def detect_qr_in_image(image_path: str, enhance: bool = True) -> QRDetectionResu
     Detect and decode QR code in an image file.
     
     This function attempts multiple detection strategies:
-    1. Direct detection on original image
-    2. Detection on grayscale image
-    3. Detection on enhanced contrast image (if enhance=True)
+    1. Direct detection on original image (downscaled for speed)
+    2. Detection on grayscale image (only if enhance=True)
+    3. Detection on enhanced contrast image (only if enhance=True)
     
     Args:
         image_path: Path to the image file
@@ -180,36 +180,52 @@ def detect_qr_in_image(image_path: str, enhance: bool = True) -> QRDetectionResu
             logger.error(f"Failed to read image: {image_path}")
             return QRDetectionResult(detected=False, error="Failed to read image")
         
-        # Strategy 1: Try detecting on original image
-        logger.debug(f"Attempting QR detection on original image: {image_path}")
+        # OPTIMIZATION: Downscale large images for faster QR detection
+        # QR codes are still detectable at lower resolutions
+        height, width = image.shape[:2]
+        max_dimension = 1200  # Sufficient for QR detection
+        
+        if width > max_dimension or height > max_dimension:
+            scale = max_dimension / max(width, height)
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            logger.debug(f"Downscaled image from {width}x{height} to {new_width}x{new_height}")
+        
+        # Strategy 1: Try detecting on downscaled image (FAST)
+        logger.debug(f"Attempting QR detection on image: {image_path}")
         result = _try_decode_qr(image)
         if result.detected:
             return result
         
-        # Strategy 2: Try grayscale conversion
+        # If no QR found and enhance=False, stop here (FAST PATH for photos without QR)
+        if not enhance:
+            logger.debug(f"No QR code detected in image (fast mode): {image_path}")
+            return QRDetectionResult(detected=False, error="No QR code found")
+        
+        # Strategy 2: Try grayscale conversion (only if enhance=True)
         logger.debug("Trying grayscale conversion...")
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         result = _try_decode_qr(gray)
         if result.detected:
             return result
         
-        # Strategy 3: Try enhanced processing (if enabled)
-        if enhance:
-            logger.debug("Trying enhanced processing...")
-            
-            # Increase contrast
-            enhanced = cv2.convertScaleAbs(gray, alpha=1.5, beta=0)
-            result = _try_decode_qr(enhanced)
-            if result.detected:
-                return result
-            
-            # Try adaptive thresholding
-            thresh = cv2.adaptiveThreshold(
-                gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-            )
-            result = _try_decode_qr(thresh)
-            if result.detected:
-                return result
+        # Strategy 3: Try enhanced processing (only if enhance=True and still not found)
+        logger.debug("Trying enhanced processing...")
+        
+        # Increase contrast
+        enhanced = cv2.convertScaleAbs(gray, alpha=1.5, beta=0)
+        result = _try_decode_qr(enhanced)
+        if result.detected:
+            return result
+        
+        # Try adaptive thresholding (last resort)
+        thresh = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+        )
+        result = _try_decode_qr(thresh)
+        if result.detected:
+            return result
         
         # No QR code detected after all strategies
         logger.info(f"No QR code detected in image: {image_path}")

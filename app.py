@@ -1776,13 +1776,34 @@ def mark_batch_uploaded(batch_id):
     try:
         batch = PhotoBatch.query.get_or_404(batch_id)
         
-        # Update batch status
-        batch.status = 'uploaded'
-        batch.current_action = 'Upload complete. Ready to process.'
-        
         # Update actual photo count
         actual_count = Photo.query.filter_by(batch_id=batch_id).count()
         batch.total_photos = actual_count
+        
+        # Check if any photos were actually uploaded
+        if actual_count == 0:
+            # No photos uploaded - mark as error and delete batch
+            batch.status = 'error'
+            batch.current_action = 'Upload failed: No photos were successfully uploaded'
+            
+            log = ProcessingLog(
+                batch_id=batch_id,
+                action='upload_failed',
+                message='Batch upload failed: No photos were successfully uploaded. Check nginx client_max_body_size setting.',
+                level='error'
+            )
+            db.session.add(log)
+            db.session.commit()
+            
+            return jsonify({
+                'success': False,
+                'error': 'No photos were successfully uploaded. This usually means file size exceeds server limits.',
+                'batch_id': batch_id
+            }), 400
+        
+        # Update batch status
+        batch.status = 'uploaded'
+        batch.current_action = 'Upload complete. Ready to process.'
         
         # Log completion
         log = ProcessingLog(

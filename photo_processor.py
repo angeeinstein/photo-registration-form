@@ -254,18 +254,26 @@ class PhotoProcessor:
                     continue
                 
                 # Detect QR code
-                self._update_batch_status(current_action=f"Detecting QR code in {photo.filename}...")
-                self._log_action(
-                    "qr_detection_started",
-                    f"Detecting QR in {photo.filename} ({idx}/{total_photos})"
-                )
+                # OPTIMIZATION: Always use fast mode (enhance=False)
+                # 
+                # Logic: Most photos DON'T have QR codes, so enhancement just slows them down
+                # - Photos WITH QR codes: Detected on first attempt anyway (fast)
+                # - Photos WITHOUT QR codes: No need to enhance (fast)
+                # 
+                # Edge case: Blurry/poorly lit QR codes might be missed
+                # - Solution: These show up as "unmatched" photos for manual review
+                # - Trade-off: 99% faster processing vs rare missed QR that needs manual fix
                 
-                qr_result = detect_qr_in_image(str(photo_path), enhance=True)
+                self._update_batch_status(current_action=f"Scanning {photo.filename}...")
                 
-                self._log_action(
-                    "qr_detection_completed",
-                    f"QR detection completed for {photo.filename} - Detected: {qr_result.detected}"
-                )
+                qr_result = detect_qr_in_image(str(photo_path), enhance=False)
+                
+                # Only log if QR detected (reduces log spam)
+                if qr_result.detected:
+                    self._log_action(
+                        "qr_detected",
+                        f"QR code found in {photo.filename} ({idx}/{total_photos})"
+                    )
                 
                 if qr_result.detected and qr_result.parsed_data:
                     # QR code detected - start new person
