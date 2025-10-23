@@ -198,6 +198,10 @@
                         <td>
                             <div class="actions">
                                 {% if batch.status == 'uploading' %}
+                                <a href="{{ url_for('admin_photo_upload') }}?resume_batch_id={{ batch.id }}" 
+                                   class="btn" style="background: #2196F3; color: white; text-decoration: none; margin-right: 5px;">
+                                    ▶️ Resume Upload
+                                </a>
                                 <button onclick="recoverBatch({{ batch.id }})" 
                                         class="btn" style="background: #ff9800; color: white; margin-right: 5px;">
                                     🔧 Recover Upload

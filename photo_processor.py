@@ -5,14 +5,15 @@ Handles sequential photo processing with QR detection and grouping
 
 import os
 import shutil
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import logging
 
 from qr_detector import detect_qr_in_image, parse_qr_data
-# Import models from app.py where they are defined
-from app import db, PhotoBatch, Photo, Registration, ProcessingLog
+# Import models and helpers from app.py where they are defined
+from app import db, PhotoBatch, Photo, Registration, ProcessingLog, db_commit_with_retry
 try:
     from drive_uploader import DriveUploader
 except Exception:
@@ -20,6 +21,30 @@ except Exception:
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def db_commit_with_retry(max_attempts=5, delay=0.5):
+    """
+    Commit database changes with retry logic for locked database.
+    Uses exponential backoff to handle concurrent access.
+    """
+    from sqlalchemy.exc import OperationalError
+    
+    for attempt in range(max_attempts):
+        try:
+            db.session.commit()
+            return True
+        except OperationalError as e:
+            if 'database is locked' in str(e) and attempt < max_attempts - 1:
+                wait_time = delay * (2 ** attempt)  # Exponential backoff
+                logger.warning(f"Database locked, retrying in {wait_time:.2f}s (attempt {attempt + 1}/{max_attempts})")
+                time.sleep(wait_time)
+                db.session.rollback()  # Rollback failed transaction
+            else:
+                logger.error(f"Database commit failed after {max_attempts} attempts: {e}")
+                db.session.rollback()
+                raise
+    return False
 
 
 class PhotoProcessor:
@@ -60,7 +85,7 @@ class PhotoProcessor:
             level=level
         )
         db.session.add(log_entry)
-        db.session.commit()
+        db_commit_with_retry()
         
         log_func = getattr(logger, level, logger.info)
         log_func(f"[Batch {self.batch_id}] {action}: {details}")
@@ -75,7 +100,7 @@ class PhotoProcessor:
         if processed_photos is not None:
             self.batch.processed_photos = processed_photos
         
-        db.session.commit()
+        db_commit_with_retry()
         
     def _save_current_person(self):
         """Save current person's photos to their folder locally (NO Drive upload here)"""
@@ -98,7 +123,7 @@ class PhotoProcessor:
                 shutil.copy2(src_path, dst_path)
                 photo.processed = True
                 photo_count += 1
-                db.session.commit()
+                db_commit_with_retry()
                 
                 self._log_action(
                     "photo_copied",
@@ -113,7 +138,7 @@ class PhotoProcessor:
         
         # Update registration photo count
         self.current_person.photo_count = len(self.current_person_photos)
-        db.session.commit()
+        db_commit_with_retry()
         
         self._log_action(
             "person_photos_saved",
@@ -133,7 +158,7 @@ class PhotoProcessor:
         # Mark QR photo
         qr_photo.is_qr_code = True
         qr_photo.registration_id = registration.id
-        db.session.commit()
+        db_commit_with_retry()
         
         self._log_action(
             "person_started",
@@ -154,7 +179,7 @@ class PhotoProcessor:
         
         photo.registration_id = self.current_person.id
         self.current_person_photos.append(photo)
-        db.session.commit()
+        db_commit_with_retry()
         
     def _match_registration(self, qr_data: Dict) -> Optional[Registration]:
         """
@@ -292,7 +317,7 @@ class PhotoProcessor:
                         # QR detected but no match
                         photo.is_qr_code = True
                         self.unmatched_photos.append(photo)
-                        db.session.commit()
+                        db_commit_with_retry()
                         self._log_action(
                             "qr_unmatched",
                             f"QR code in {photo.filename} could not be matched to registration",
@@ -405,7 +430,7 @@ class PhotoProcessor:
                                     for photo in person_photos:
                                         photo.uploaded_to_drive = True
                                     
-                                    db.session.commit()
+                                    db_commit_with_retry()
                                     drive_results.append({'person': person_name, 'success': True, 'link': result['share_link']})
                                     
                                     self._log_action(

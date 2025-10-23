@@ -276,12 +276,19 @@ update_installation() {
         systemctl stop ${SERVICE_NAME}
     fi
     
-    # Backup database if exists
+    # Backup database if exists (including WAL files)
     if [[ -f "$DB_FILE" ]]; then
         BACKUP_FILE="${DB_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
         print_info "Backing up database to ${BACKUP_FILE}..."
         cp "$DB_FILE" "$BACKUP_FILE"
-        print_success "Database backed up"
+        # Backup WAL mode files if they exist
+        if [[ -f "${DB_FILE}-wal" ]]; then
+            cp "${DB_FILE}-wal" "${BACKUP_FILE}-wal"
+        fi
+        if [[ -f "${DB_FILE}-shm" ]]; then
+            cp "${DB_FILE}-shm" "${BACKUP_FILE}-shm"
+        fi
+        print_success "Database backed up (including WAL files if present)"
     fi
     
     # Update from git
@@ -371,6 +378,9 @@ with app.app_context():
     fi
     if [[ -f "$DB_FILE" ]]; then
         chmod 644 "$DB_FILE"
+        # Also set permissions for WAL mode files if they exist
+        chmod 644 "${DB_FILE}-wal" 2>/dev/null || true
+        chmod 644 "${DB_FILE}-shm" 2>/dev/null || true
     fi
     
     # Update Python dependencies
@@ -404,6 +414,9 @@ reinstall_installation() {
     if [[ -f "$DB_FILE" ]]; then
         print_info "Backing up database..."
         cp "$DB_FILE" "$BACKUP_DIR/"
+        # Backup WAL mode files if they exist
+        cp "${DB_FILE}-wal" "$BACKUP_DIR/" 2>/dev/null || true
+        cp "${DB_FILE}-shm" "$BACKUP_DIR/" 2>/dev/null || true
     fi
     
     if [[ -f "${INSTALL_DIR}/.env" ]]; then
@@ -969,6 +982,13 @@ show_status() {
     if [[ -f "$DB_FILE" ]]; then
         echo "  Location: $DB_FILE"
         echo "  Size: $(du -h "$DB_FILE" | cut -f1)"
+        # Show WAL files if they exist
+        if [[ -f "${DB_FILE}-wal" ]]; then
+            echo "  WAL file: $(du -h "${DB_FILE}-wal" | cut -f1)"
+        fi
+        if [[ -f "${DB_FILE}-shm" ]]; then
+            echo "  SHM file: $(du -h "${DB_FILE}-shm" | cut -f1)"
+        fi
         echo "  Registrations: $(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM registration;" 2>/dev/null || echo "Unable to query")"
     else
         echo "  Database not found"
@@ -1025,7 +1045,14 @@ remove_installation() {
             BACKUP_FILE="${HOME}/${APP_NAME}_backup_$(date +%Y%m%d_%H%M%S).db"
             print_info "Backing up database to ${BACKUP_FILE}..."
             cp "$DB_FILE" "$BACKUP_FILE"
-            print_success "Database backed up to $BACKUP_FILE"
+            # Backup WAL mode files if they exist
+            if [[ -f "${DB_FILE}-wal" ]]; then
+                cp "${DB_FILE}-wal" "${BACKUP_FILE}-wal"
+            fi
+            if [[ -f "${DB_FILE}-shm" ]]; then
+                cp "${DB_FILE}-shm" "${BACKUP_FILE}-shm"
+            fi
+            print_success "Database backed up to $BACKUP_FILE (including WAL files if present)"
         else
             print_info "No database file found to backup"
         fi

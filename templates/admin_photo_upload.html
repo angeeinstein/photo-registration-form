@@ -461,13 +461,44 @@
         const ALLOWED_TYPES = ['image/jpeg', 'image/jpg'];
         const CHUNK_SIZE = 1; // Upload 1 file at a time (changed from 5 for reliability with large files)
 
+        // Check for resume mode
+        const urlParams = new URLSearchParams(window.location.search);
+        const resumeBatchId = urlParams.get('resume_batch_id');
+        let alreadyUploadedFiles = [];
+
         // State
         let selectedFiles = [];
         let uploadedFiles = [];
         let validationErrors = [];
-        let currentBatchId = null;
+        let currentBatchId = resumeBatchId || null;
         let uploadStartTime = null;
         let totalBytesUploaded = 0;
+        
+        // Show resume mode indicator
+        if (resumeBatchId) {
+            document.querySelector('.upload-section h2').innerHTML = 
+                `📤 Resume Upload - Batch #${resumeBatchId} <span style="color: #4CAF50;">(Resume Mode)</span>`;
+            
+            // Load already uploaded files
+            fetch(`/admin/photos/batch/${resumeBatchId}/uploaded-files`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alreadyUploadedFiles = data.uploaded_files;
+                        console.log(`Resume mode: ${alreadyUploadedFiles.length} files already uploaded`);
+                        
+                        // Show info message
+                        const infoDiv = document.createElement('div');
+                        infoDiv.style.cssText = 'background: #e8f5e9; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #4CAF50;';
+                        infoDiv.innerHTML = `
+                            <strong>📋 Resume Mode:</strong> ${alreadyUploadedFiles.length} photos already uploaded.<br>
+                            Select files to upload - already uploaded files will be automatically skipped.
+                        `;
+                        document.querySelector('.batch-name-input').insertAdjacentElement('beforebegin', infoDiv);
+                    }
+                })
+                .catch(err => console.error('Error loading uploaded files:', err));
+        }
 
         // Elements
         const uploadZone = document.getElementById('uploadZone');
@@ -570,33 +601,55 @@
             progressSection.classList.add('active');
             uploadStartTime = Date.now();
 
+            // Filter out already uploaded files in resume mode
+            if (resumeBatchId && alreadyUploadedFiles.length > 0) {
+                const originalCount = selectedFiles.length;
+                selectedFiles = selectedFiles.filter(file => !alreadyUploadedFiles.includes(file.name));
+                const skippedCount = originalCount - selectedFiles.length;
+                
+                if (skippedCount > 0) {
+                    console.log(`Skipped ${skippedCount} already uploaded files`);
+                }
+                
+                if (selectedFiles.length === 0) {
+                    alert('All selected files are already uploaded!');
+                    location.reload();
+                    return;
+                }
+            }
+
             // Update totals
             document.getElementById('totalCount').textContent = selectedFiles.length;
             const totalSizeMB = (selectedFiles.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024)).toFixed(2);
             document.getElementById('totalSize').textContent = `${totalSizeMB} MB`;
 
-            // Create batch
+            // Create batch or use existing batch (resume mode)
             try {
-                const batchName = batchNameInput.value.trim() || `Batch_${new Date().toISOString().split('T')[0]}`;
-                const response = await fetch('/admin/photos/create-batch', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': getCsrfToken()
-                    },
-                    body: JSON.stringify({
-                        batch_name: batchName,
-                        total_photos: selectedFiles.length,
-                        total_size_mb: parseFloat(totalSizeMB)
-                    })
-                });
+                if (!resumeBatchId) {
+                    // Create new batch
+                    const batchName = batchNameInput.value.trim() || `Batch_${new Date().toISOString().split('T')[0]}`;
+                    const response = await fetch('/admin/photos/create-batch', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCsrfToken()
+                        },
+                        body: JSON.stringify({
+                            batch_name: batchName,
+                            total_photos: selectedFiles.length,
+                            total_size_mb: parseFloat(totalSizeMB)
+                        })
+                    });
 
-                const data = await response.json();
-                if (!data.success) {
-                    throw new Error(data.error || 'Failed to create batch');
+                    const data = await response.json();
+                    if (!data.success) {
+                        throw new Error(data.error || 'Failed to create batch');
+                    }
+
+                    currentBatchId = data.batch_id;
+                } else {
+                    console.log(`Resuming upload to batch #${resumeBatchId}`);
                 }
-
-                currentBatchId = data.batch_id;
                 
                 // Upload files in chunks
                 await uploadFilesInChunks();
@@ -649,9 +702,13 @@
                 const data = await response.json();
                 
                 if (data.success) {
+                    if (data.skipped) {
+                        console.log(`⊘ Skipped ${file.name} (already uploaded)`);
+                    } else {
+                        console.log(`✓ Uploaded ${file.name} (${fileSize} MB)`);
+                    }
                     uploadedFiles.push(file);
                     totalBytesUploaded += file.size;
-                    console.log(`✓ Uploaded ${file.name} (${fileSize} MB)`);
                 } else {
                     throw new Error(data.error || 'Upload failed');
                 }

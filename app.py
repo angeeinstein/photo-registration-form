@@ -21,9 +21,19 @@ app = Flask(__name__)
 
 # Database configuration
 basedir = os.path.abspath(os.path.dirname(__file__))
-database_uri = os.environ.get('DATABASE_URI', 'sqlite:///' + os.path.join(basedir, 'registrations.db'))
+database_path = os.path.join(basedir, 'registrations.db')
+database_uri = os.environ.get('DATABASE_URI', f'sqlite:///{database_path}?timeout=30')
 app.config['SQLALCHEMY_DATABASE_URI'] = database_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_size': 10,
+    'pool_recycle': 3600,
+    'pool_pre_ping': True,
+    'connect_args': {
+        'timeout': 30,  # 30 second timeout for lock acquisition
+        'check_same_thread': False  # Allow SQLite across threads
+    }
+}
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
 # Security configurations
@@ -65,6 +75,67 @@ limiter = Limiter(
 )
 
 db = SQLAlchemy(app)
+
+# Enable WAL mode for SQLite for better concurrency
+@app.before_request
+def _db_enable_wal():
+    """Enable WAL mode on SQLite database for better concurrent access"""
+    if database_uri.startswith('sqlite:'):
+        try:
+            with db.engine.connect() as conn:
+                conn.execute(db.text('PRAGMA journal_mode=WAL'))
+                conn.execute(db.text('PRAGMA busy_timeout=30000'))  # 30 second timeout
+                conn.commit()
+        except Exception as e:
+            app.logger.warning(f"Could not enable WAL mode: {e}")
+    # Only run once
+    app.before_request_funcs[None].remove(_db_enable_wal)
+
+# Database retry decorator
+def db_retry(max_attempts=3, delay=0.5):
+    """Decorator to retry database operations on lock errors"""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            import time
+            from sqlalchemy.exc import OperationalError
+            
+            for attempt in range(max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except OperationalError as e:
+                    if 'database is locked' in str(e) and attempt < max_attempts - 1:
+                        app.logger.warning(f"Database locked, retrying ({attempt + 1}/{max_attempts})...")
+                        time.sleep(delay * (attempt + 1))  # Exponential backoff
+                    else:
+                        raise
+            return None
+        wrapper.__name__ = func.__name__
+        return wrapper
+    return decorator
+
+# Database commit with retry helper (for use in photo_processor.py)
+def db_commit_with_retry(max_attempts=5, delay=0.5):
+    """
+    Commit database changes with automatic retry on lock errors.
+    Used by photo processor for heavy write operations.
+    """
+    import time
+    from sqlalchemy.exc import OperationalError
+    
+    for attempt in range(max_attempts):
+        try:
+            db.session.commit()
+            return True
+        except OperationalError as e:
+            if 'database is locked' in str(e) and attempt < max_attempts - 1:
+                app.logger.warning(f"Database locked during commit, retrying ({attempt + 1}/{max_attempts})...")
+                db.session.rollback()
+                time.sleep(delay * (attempt + 1))  # Exponential backoff
+            else:
+                app.logger.error(f"Database commit failed after {max_attempts} attempts: {e}")
+                db.session.rollback()
+                raise
+    return False
 
 # Database Model
 class Registration(db.Model):
@@ -578,6 +649,7 @@ def health():
 @app.route('/api/registrations/updates', methods=['GET'])
 @login_required
 @limiter.exempt  # Exempt from rate limiting - used for dashboard live polling
+@db_retry(max_attempts=3, delay=0.3)
 def get_registration_updates():
     """API endpoint for live dashboard updates"""
     try:
@@ -634,6 +706,7 @@ def admin_logout():
 
 @app.route('/admin')
 @login_required
+@db_retry(max_attempts=3, delay=0.3)
 def admin_dashboard():
     """Admin dashboard"""
     try:
@@ -1717,6 +1790,28 @@ def create_photo_batch():
         app.logger.error(f'Error creating batch: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/admin/photos/batch/<int:batch_id>/uploaded-files', methods=['GET'])
+@login_required
+def get_uploaded_files(batch_id):
+    """Get list of already uploaded filenames for this batch (for resume functionality)"""
+    try:
+        batch = PhotoBatch.query.get_or_404(batch_id)
+        
+        # Get all uploaded filenames from database
+        photos = Photo.query.filter_by(batch_id=batch_id).all()
+        uploaded_filenames = [photo.filename for photo in photos]
+        
+        return jsonify({
+            'success': True,
+            'batch_id': batch_id,
+            'uploaded_files': uploaded_filenames,
+            'count': len(uploaded_filenames)
+        })
+        
+    except Exception as e:
+        app.logger.error(f'Error getting uploaded files: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/admin/photos/upload-file', methods=['POST'])
 @login_required
 def upload_photo_file():
@@ -1737,6 +1832,18 @@ def upload_photo_file():
         
         if file.filename == '':
             return jsonify({'success': False, 'error': 'No file selected'}), 400
+        
+        # Check if file already exists in this batch (for resume functionality)
+        original_filename = secure_filename(file.filename)
+        existing_photo = Photo.query.filter_by(batch_id=batch_id, filename=original_filename).first()
+        if existing_photo:
+            # File already uploaded, skip it
+            return jsonify({
+                'success': True,
+                'skipped': True,
+                'filename': original_filename,
+                'message': 'File already uploaded'
+            })
         
         # Validate file type (check magic bytes, not just extension)
         file_header = file.read(12)
@@ -1973,6 +2080,7 @@ def start_batch_processing(batch_id):
 
 @app.route('/admin/photos/process/<int:batch_id>/status')
 @login_required
+@db_retry(max_attempts=3, delay=0.3)
 def get_processing_status(batch_id):
     """Get current processing status (for real-time updates)"""
     try:
