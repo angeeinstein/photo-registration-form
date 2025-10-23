@@ -108,6 +108,7 @@ print(secrets.token_hex(32))
    - Rate limiting automatically uses real client IPs from Cloudflare headers
    - Supports `CF-Connecting-IP`, `X-Forwarded-For`, and `X-Real-IP` headers
    - No additional configuration needed if using Cloudflare Tunnel or nginx proxy
+   - ⚠️ **Using Cloudflare Tunnel?** See [CLOUDFLARE_TUNNEL_SECURITY.md](CLOUDFLARE_TUNNEL_SECURITY.md) for setup instructions
 
 ## 🌐 Cloudflare & Reverse Proxy Support
 
@@ -117,6 +118,16 @@ The application automatically detects the real client IP when behind:
 - **Other Proxies**: Falls back to standard proxy headers
 
 This ensures rate limiting works correctly even when all requests appear to come from Cloudflare's IPs.
+
+### 🔒 Cloudflare Tunnel Users: Important Note
+
+If you're using **Cloudflare Tunnel**, you should set `SESSION_COOKIE_SECURE=False` in your `.env` file. This is **safe and correct** because:
+- Cloudflare Tunnel connects to Flask over HTTP **locally** (127.0.0.1)
+- Cloudflare handles HTTPS encryption at the edge
+- Your local connection is never exposed to the internet
+- Users still get full HTTPS protection
+
+See [CLOUDFLARE_TUNNEL_SECURITY.md](CLOUDFLARE_TUNNEL_SECURITY.md) for complete details.
 
 ### Nginx Configuration (Optional)
 If you're using nginx without Cloudflare, ensure these headers are set:

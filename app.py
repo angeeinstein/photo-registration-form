@@ -580,7 +580,12 @@ def admin_login():
         admin_username = os.getenv('ADMIN_USERNAME', 'admin')
         admin_password = os.getenv('ADMIN_PASSWORD', 'admin')
         
-        if username == admin_username and password == admin_password:
+        # Use constant-time comparison to prevent timing attacks
+        import secrets
+        username_match = secrets.compare_digest(username, admin_username)
+        password_match = secrets.compare_digest(password, admin_password)
+        
+        if username_match and password_match:
             session['admin_logged_in'] = True
             session.permanent = True
             flash('Successfully logged in!', 'success')
