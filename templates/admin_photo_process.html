@@ -304,6 +304,7 @@
             </div>
 
             <div class="progress-section">
+                <div id="phaseIndicator" style="margin-bottom: 10px; font-size: 14px; color: #666; text-align: center;"></div>
                 <div class="progress-bar-container">
                     <div id="progressBar" class="progress-bar" style="width: 0%">0%</div>
                 </div>
@@ -395,6 +396,20 @@
             const progress = data.progress_percentage || 0;
             progressBar.style.width = progress + '%';
             progressBar.textContent = progress + '%';
+            
+            // Update phase indicator
+            const phaseIndicator = document.getElementById('phaseIndicator');
+            const currentAction = data.current_action || '';
+            
+            if (data.status === 'completed') {
+                phaseIndicator.innerHTML = '<strong style="color: #10b981;">✓ Processing Complete</strong>';
+            } else if (currentAction.includes('Phase 2') || currentAction.includes('Drive')) {
+                phaseIndicator.innerHTML = '<strong style="color: #667eea;">📤 Phase 2: Uploading to Google Drive (80-100%)</strong>';
+            } else if (data.status === 'processing') {
+                phaseIndicator.innerHTML = '<strong style="color: #764ba2;">🔍 Phase 1: Scanning Photos & Detecting QR Codes (0-80%)</strong>';
+            } else {
+                phaseIndicator.textContent = '';
+            }
         }
 
         // Add log entry

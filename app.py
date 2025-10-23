@@ -1894,7 +1894,6 @@ def get_processing_status(batch_id):
         # Get processing metrics
         total_photos = batch.total_photos or 0
         processed_photos = batch.processed_photos or 0
-        progress_pct = int((processed_photos / total_photos * 100)) if total_photos > 0 else 0
         
         # Count people found (registrations with photos)
         people_found = db.session.query(Registration).join(Photo).filter(
@@ -1908,10 +1907,39 @@ def get_processing_status(batch_id):
             registration_id=None
         ).count()
         
+        # Calculate progress with two phases:
+        # Phase 1 (0-80%): Photo scanning and QR detection
+        # Phase 2 (80-100%): Drive upload
+        progress_pct = 0
+        current_action = batch.current_action or ''
+        
+        if batch.status == 'completed':
+            progress_pct = 100
+        elif batch.status == 'error':
+            # Keep last known progress
+            progress_pct = int((processed_photos / total_photos * 80)) if total_photos > 0 else 0
+        elif 'Phase 2' in current_action or 'Drive' in current_action:
+            # Phase 2: Drive upload (80-100%)
+            # Base progress at 80%, add up to 20% based on upload progress
+            if people_found > 0:
+                # Count how many people have been uploaded to Drive
+                uploaded_count = db.session.query(Registration).join(Photo).filter(
+                    Photo.batch_id == batch_id,
+                    Photo.registration_id.isnot(None),
+                    Registration.drive_folder_id.isnot(None)
+                ).distinct().count()
+                upload_progress = int((uploaded_count / people_found) * 20)
+                progress_pct = 80 + upload_progress
+            else:
+                progress_pct = 80
+        else:
+            # Phase 1: Photo scanning (0-80%)
+            progress_pct = int((processed_photos / total_photos * 80)) if total_photos > 0 else 0
+        
         return jsonify({
             'success': True,
             'status': batch.status,
-            'current_action': batch.current_action or '',
+            'current_action': current_action,
             'processed_photos': processed_photos,
             'total_photos': total_photos,
             'progress_percentage': progress_pct,
