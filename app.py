@@ -1863,6 +1863,52 @@ def mark_batch_uploaded(batch_id):
         app.logger.error(f'Error marking batch as uploaded: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/admin/photos/batch/<int:batch_id>/force-ready', methods=['POST'])
+@login_required
+def force_batch_ready(batch_id):
+    """Force a stuck batch to 'uploaded' status with current photos"""
+    try:
+        batch = PhotoBatch.query.get_or_404(batch_id)
+        
+        # Count actual uploaded photos
+        actual_count = Photo.query.filter_by(batch_id=batch_id).count()
+        
+        if actual_count == 0:
+            return jsonify({
+                'success': False,
+                'error': 'No photos found in this batch. Cannot recover.'
+            }), 400
+        
+        # Update batch with actual numbers
+        batch.total_photos = actual_count
+        batch.status = 'uploaded'
+        batch.current_action = f'Recovered: {actual_count} photos ready to process'
+        
+        # Calculate total size
+        total_size = db.session.query(db.func.sum(Photo.file_size)).filter_by(batch_id=batch_id).scalar() or 0
+        batch.total_size_mb = total_size / (1024 * 1024)
+        
+        # Log recovery
+        log = ProcessingLog(
+            batch_id=batch_id,
+            action='batch_recovered',
+            message=f'Batch manually recovered: {actual_count} photos, {batch.total_size_mb:.1f}MB',
+            level='warning'
+        )
+        db.session.add(log)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'photos': actual_count,
+            'size_mb': batch.total_size_mb
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f'Error recovering batch: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/admin/photos/process/<int:batch_id>')
 @login_required
 def process_photo_batch_page(batch_id):

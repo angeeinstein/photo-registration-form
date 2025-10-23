@@ -197,7 +197,12 @@
                         </td>
                         <td>
                             <div class="actions">
-                                {% if batch.status in ['uploaded', 'error'] %}
+                                {% if batch.status == 'uploading' %}
+                                <button onclick="recoverBatch({{ batch.id }})" 
+                                        class="btn" style="background: #ff9800; color: white; margin-right: 5px;">
+                                    🔧 Recover Upload
+                                </button>
+                                {% elif batch.status in ['uploaded', 'error'] %}
                                 <a href="{{ url_for('process_photo_batch_page', batch_id=batch.id) }}" 
                                    class="btn btn-primary" style="background: #4CAF50; text-decoration: none; margin-right: 5px;">
                                     🚀 Process
@@ -588,6 +593,34 @@
             modal.style.display = 'none';
             // Clear image source (no need to revoke blob URL since we're using data URI)
             qrImage.src = '';
+        }
+
+        // Recover stuck batch
+        async function recoverBatch(batchId) {
+            if (!confirm('Recover this batch with currently uploaded photos?\n\nThis will mark the batch as ready to process with the photos that were successfully uploaded.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/admin/photos/batch/${batchId}/force-ready`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': '{{ csrf_token() }}'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert(`✓ Batch recovered!\n${data.photos} photos (${data.size_mb.toFixed(1)}MB) ready to process.`);
+                    location.reload();
+                } else {
+                    alert(`Failed to recover batch: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error recovering batch:', error);
+                alert(`Error: ${error.message}`);
+            }
         }
 
         // Resend Drive link email
