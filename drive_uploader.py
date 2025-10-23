@@ -181,24 +181,42 @@ class DriveUploader:
             logger.error(f"Failed to create folder '{folder_name}': {str(e)}")
             raise
     
-    def create_person_folder(self, first_name: str, last_name: str) -> Tuple[str, str]:
+    def create_person_folder(self, first_name: str, last_name: str, event_folder_name: Optional[str] = None) -> Tuple[str, str]:
         """
         Create a folder for a person's photos
         
         Args:
             first_name: Person's first name
             last_name: Person's last name
+            event_folder_name: Optional event/batch folder name. If not provided, creates one with current date.
             
         Returns:
             Tuple[str, str]: (folder_id, folder_name)
         """
         folder_name = self._get_folder_name(first_name, last_name)
-        parent_folder_id = self.config.get('parent_folder_id')
         
-        # Handle nested folder structure (e.g., Event_YYYYMMDD/FirstName_LastName)
+        # Get parent folder ID from config (works for both OAuth and service account)
+        parent_folder_id = self.config.get('parent_folder_id') if self.config else None
+        
+        # Always create an event folder to organize person folders
+        # This prevents cluttering the root Drive folder
+        if not event_folder_name:
+            # Auto-generate event folder name with date
+            from datetime import datetime
+            event_folder_name = f"PhotoRegistration_{datetime.now().strftime('%Y-%m-%d_%H%M')}"
+        
+        # Check if event folder already exists (to reuse for same batch)
+        event_folder_id = self._find_folder(event_folder_name, parent_folder_id)
+        if not event_folder_id:
+            logger.info(f"Creating event folder: {event_folder_name}")
+            event_folder_id = self.create_folder(event_folder_name, parent_folder_id)
+        else:
+            logger.info(f"Using existing event folder: {event_folder_name}")
+        
+        # Handle nested folder structure (e.g., Event/FirstName_LastName)
         if '/' in folder_name:
             parts = folder_name.split('/')
-            current_parent = parent_folder_id
+            current_parent = event_folder_id
             
             # Create parent folders if needed
             for i, part in enumerate(parts[:-1]):
@@ -215,7 +233,8 @@ class DriveUploader:
             folder_id = self.create_folder(final_folder_name, current_parent)
             
         else:
-            folder_id = self.create_folder(folder_name, parent_folder_id)
+            # Create person folder inside event folder
+            folder_id = self.create_folder(folder_name, event_folder_id)
         
         return folder_id, folder_name
     
@@ -402,7 +421,8 @@ class DriveUploader:
     
     def upload_person_photos(self, first_name: str, last_name: str, 
                             photo_paths: List[str],
-                            progress_callback=None) -> dict:
+                            progress_callback=None,
+                            event_folder_name: Optional[str] = None) -> dict:
         """
         Complete workflow: Create folder, upload photos, generate share link
         
@@ -411,6 +431,7 @@ class DriveUploader:
             last_name: Person's last name
             photo_paths: List of photo file paths
             progress_callback: Optional callback(action, details)
+            event_folder_name: Optional event/batch folder name for organizing person folders
             
         Returns:
             dict: {
@@ -427,7 +448,7 @@ class DriveUploader:
             if progress_callback:
                 progress_callback('creating_folder', f"Creating folder for {first_name} {last_name}...")
             
-            folder_id, folder_name = self.create_person_folder(first_name, last_name)
+            folder_id, folder_name = self.create_person_folder(first_name, last_name, event_folder_name)
             
             # Step 2: Upload photos
             if progress_callback:

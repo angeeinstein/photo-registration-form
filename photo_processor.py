@@ -343,6 +343,10 @@ class PhotoProcessor:
                 try:
                     self._log_action("phase2_started", f"Phase 2: Uploading {len(registrations_with_photos)} person folders to Google Drive")
                     
+                    # Use batch name as event folder name for organization
+                    # Sanitize batch name for Drive folder
+                    event_folder_name = self.batch.batch_name.replace('/', '-').replace('\\', '-')
+                    
                     # Initialize Drive uploader once for all uploads
                     with DriveUploader() as drive_uploader:
                         for idx, registration in enumerate(registrations_with_photos, 1):
@@ -388,7 +392,8 @@ class PhotoProcessor:
                                     registration.first_name,
                                     registration.last_name,
                                     photo_paths,
-                                    progress_callback=upload_callback
+                                    progress_callback=upload_callback,
+                                    event_folder_name=event_folder_name
                                 )
                                 
                                 if result['success']:
