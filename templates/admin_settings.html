@@ -215,8 +215,65 @@
                 </div>
             </div>
 
+            <div class="form-section">
+                <h2>🔒 Event Security Code</h2>
+                <p style="color: #666; margin-bottom: 20px; font-size: 14px;">
+                    Require users to have an event code to access the registration form. 
+                    Use this to restrict access via posters, QR codes, or email invitations.
+                </p>
+                
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Event Code</div>
+                        <div class="setting-description">Users must visit /?code=YOUR_CODE to register. Leave empty for open registration.</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <input type="text" name="event_code" id="event_code" 
+                               value="{{ event_code }}" 
+                               placeholder="e.g., EVENT2025"
+                               style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; min-width: 250px;">
+                        <button type="button" onclick="generateEventCode()" class="btn btn-secondary" style="background: #6c757d; padding: 10px 15px;">
+                            🎲 Generate
+                        </button>
+                    </div>
+                </div>
+                
+                {% if event_code %}
+                <div style="margin-top: 15px; padding: 15px; background: #e8f5e9; border-radius: 5px; border-left: 4px solid #4CAF50;">
+                    <strong>📋 Your Registration URL:</strong><br>
+                    <code style="background: white; padding: 5px 10px; border-radius: 3px; display: inline-block; margin-top: 5px; font-size: 14px;">
+                        {{ request.url_root }}?code={{ event_code }}
+                    </code>
+                    <button type="button" onclick="copyRegistrationURL()" class="btn btn-info" style="margin-left: 10px; padding: 5px 15px; font-size: 14px;">
+                        📋 Copy
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+
             <button type="submit" class="btn btn-primary">Save Settings</button>
         </form>
+
+        <script>
+            function generateEventCode() {
+                // Generate random 12-character code
+                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Exclude similar characters
+                let code = '';
+                for (let i = 0; i < 12; i++) {
+                    code += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                document.getElementById('event_code').value = code;
+            }
+            
+            function copyRegistrationURL() {
+                const url = '{{ request.url_root }}?code={{ event_code }}';
+                navigator.clipboard.writeText(url).then(() => {
+                    alert('✓ Registration URL copied to clipboard!');
+                }).catch(err => {
+                    alert('Failed to copy URL. Please copy manually.');
+                });
+            }
+        </script>
 
         <div class="settings-card" style="margin-top: 30px;">
             <h3>Google Drive OAuth</h3>

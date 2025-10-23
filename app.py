@@ -421,8 +421,26 @@ def internal_error(e):
 # Routes
 @app.route('/')
 def index():
-    """Display the registration form"""
-    return render_template('index.html')
+    """Display the registration form - requires event code"""
+    # Get event code from environment or settings
+    try:
+        required_code = AdminSettings.get_setting('EVENT_CODE', os.getenv('EVENT_CODE', ''))
+    except:
+        required_code = os.getenv('EVENT_CODE', '')
+    
+    # If no event code is configured, allow open access
+    if not required_code:
+        return render_template('index.html', code_required=False)
+    
+    # Check if valid code provided in URL
+    provided_code = request.args.get('code', '').strip()
+    
+    if provided_code and provided_code == required_code:
+        # Valid code - show form
+        return render_template('index.html', code_required=False, valid_code=provided_code)
+    else:
+        # Invalid or missing code - show access denied
+        return render_template('index.html', code_required=True, code_invalid=(provided_code != ''))
 
 @app.route('/register', methods=['POST'])
 @limiter.limit("10 per minute")  # Rate limit: 10 registrations per minute per IP
@@ -430,6 +448,17 @@ def register():
     """Handle registration form submission"""
     try:
         data = request.form
+        
+        # Validate event code if configured
+        try:
+            required_code = AdminSettings.get_setting('EVENT_CODE', os.getenv('EVENT_CODE', ''))
+        except:
+            required_code = os.getenv('EVENT_CODE', '')
+        
+        if required_code:
+            provided_code = data.get('event_code', '').strip()
+            if not provided_code or provided_code != required_code:
+                return jsonify({'error': 'Invalid or missing event code'}), 403
         
         # Validate required fields
         if not data.get('first_name') or not data.get('last_name') or not data.get('email'):
@@ -774,6 +803,10 @@ def admin_settings():
         AdminSettings.set_setting('DEFAULT_PHOTOS_ACCOUNT_ID', photos_account_id)
         AdminSettings.set_setting('DEFAULT_TEST_ACCOUNT_ID', test_account_id)
         
+        # Update event code setting
+        event_code = request.form.get('event_code', '').strip()
+        AdminSettings.set_setting('EVENT_CODE', event_code)
+        
         flash('Settings saved successfully!', 'success')
         return redirect(url_for('admin_settings'))
     
@@ -782,6 +815,7 @@ def admin_settings():
     confirmation_account_id = AdminSettings.get_setting('DEFAULT_CONFIRMATION_ACCOUNT_ID', '')
     photos_account_id = AdminSettings.get_setting('DEFAULT_PHOTOS_ACCOUNT_ID', '')
     test_account_id = AdminSettings.get_setting('DEFAULT_TEST_ACCOUNT_ID', '')
+    event_code = AdminSettings.get_setting('EVENT_CODE', os.getenv('EVENT_CODE', ''))
     
     # Get all active email accounts
     email_accounts = EmailAccount.query.filter_by(is_active=True).all()
@@ -791,6 +825,7 @@ def admin_settings():
                          confirmation_account_id=confirmation_account_id,
                          photos_account_id=photos_account_id,
                          test_account_id=test_account_id,
+                         event_code=event_code,
                          email_accounts=email_accounts)
 
 @app.route('/admin/resend-confirmation/<int:registration_id>', methods=['POST'])

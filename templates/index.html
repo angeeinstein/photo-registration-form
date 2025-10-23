@@ -18,8 +18,25 @@
         
         <div id="messageBox" class="message"></div>
         
+        {% if code_required %}
+        <!-- Access Denied - Event Code Required -->
+        <div class="access-denied" style="text-align: center; padding: 2rem;">
+            <div style="font-size: 4rem; margin-bottom: 1rem;">🔒</div>
+            <h2>Event Code Required</h2>
+            {% if code_invalid %}
+            <p style="color: #dc3545; margin: 1rem 0;">Invalid event code. Please check your invitation.</p>
+            {% else %}
+            <p>This registration form requires an event code.</p>
+            <p>Please use the link from your event invitation or poster.</p>
+            {% endif %}
+        </div>
+        {% else %}
+        <!-- Registration Form -->
         <form id="registrationForm">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if valid_code %}
+            <input type="hidden" name="event_code" value="{{ valid_code }}">
+            {% endif %}
             <div class="form-group">
                 <label for="first_name">First Name *</label>
                 <input type="text" id="first_name" name="first_name" required>
@@ -144,6 +161,7 @@
                 }
             });
         });
+        {% endif %}
     </script>
 </body>
 </html>
