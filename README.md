@@ -2,6 +2,8 @@
 
 A Flask-based web application for collecting photo registration information at fair events. Participants can register with their name and email to receive their event photos.
 
+> 📚 **Full Documentation:** See the [`docs/`](docs/) folder for detailed guides on setup, security, troubleshooting, and more.
+
 ## 🚀 Quick Start
 
 ```bash
