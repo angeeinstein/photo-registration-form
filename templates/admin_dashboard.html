@@ -8,9 +8,9 @@
 </head>
 <body>
     <!-- Live Update Indicator -->
-    <div class="live-indicator">
-        <div class="live-dot"></div>
-        <span>Live Updates Active</span>
+    <div class="live-indicator" id="liveIndicator">
+        <div class="live-dot" id="liveDot"></div>
+        <span id="liveStatus">Connecting...</span>
     </div>
 
     <div class="header">
@@ -376,6 +376,33 @@
             }, 5000);
         }
 
+        // Function to update live indicator status
+        function updateLiveIndicator(status, message) {
+            const indicator = document.getElementById('liveIndicator');
+            const dot = document.getElementById('liveDot');
+            const statusText = document.getElementById('liveStatus');
+            
+            if (status === 'active') {
+                indicator.style.background = 'rgba(76, 175, 80, 0.1)';
+                dot.style.background = '#4CAF50';
+                dot.style.animation = 'pulse 2s ease-in-out infinite';
+                statusText.textContent = message || 'Live Updates Active';
+                statusText.style.color = '#2d5016';
+            } else if (status === 'error') {
+                indicator.style.background = 'rgba(244, 67, 54, 0.1)';
+                dot.style.background = '#f44336';
+                dot.style.animation = 'none';
+                statusText.textContent = message || 'Connection Error';
+                statusText.style.color = '#c62828';
+            } else if (status === 'connecting') {
+                indicator.style.background = 'rgba(255, 193, 7, 0.1)';
+                dot.style.background = '#FFC107';
+                dot.style.animation = 'pulse 1s ease-in-out infinite';
+                statusText.textContent = message || 'Connecting...';
+                statusText.style.color = '#f57f17';
+            }
+        }
+
         // Function to fetch updates
         async function fetchUpdates() {
             if (isUpdating) return;
@@ -392,13 +419,18 @@
                     updateStats(data.stats);
                     updateTable(data.registrations);
                     lastUpdateTime = new Date();
+                    updateLiveIndicator('active', 'Live Updates Active');
                 }
             } catch (error) {
                 console.error('Error fetching updates:', error);
+                updateLiveIndicator('error', 'Connection Error');
             } finally {
                 isUpdating = false;
             }
         }
+        
+        // Initial status
+        updateLiveIndicator('connecting', 'Connecting...');
 
         // Start polling for updates every 5 seconds
         setInterval(fetchUpdates, 5000);
