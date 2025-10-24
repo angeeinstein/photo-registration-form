@@ -300,10 +300,11 @@
                  id="photo-{{ photo.id }}" 
                  data-photo-id="{{ photo.id }}">
                 <span class="photo-index">#{{ loop.index }}</span>
-                <img src="/uploads/batches/{{ batch.id }}/{{ photo.filename }}" 
+                <img src="/uploads/batches/{{ batch.id }}/thumbnails/{{ photo.filename }}" 
                      alt="{{ photo.filename }}" 
                      class="photo-thumbnail"
-                     loading="lazy">
+                     loading="lazy"
+                     onerror="this.onerror=null; this.src='/uploads/batches/{{ batch.id }}/{{ photo.filename }}';">
                 <div class="photo-info">
                     <div class="photo-filename">{{ photo.filename }}</div>
                     {% if photo.is_qr_code %}
@@ -313,9 +314,10 @@
                         {% else %}
                             <div style="color: #f57c00; font-size: 11px;">QR found but not matched</div>
                         {% endif %}
-                    {% elif photo.registration %}
-                        <div class="person-name">→ {{ photo.registration.first_name }} {{ photo.registration.last_name }}</div>
                     {% else %}
+                        {% if photo.registration %}
+                            <div class="person-name">→ {{ photo.registration.first_name }} {{ photo.registration.last_name }}</div>
+                        {% endif %}
                         <button class="rescan-btn" onclick="rescanPhoto({{ photo.id }}, '{{ photo.filename }}')">
                             🔍 Rescan for QR
                         </button>
@@ -412,7 +414,11 @@
                         const qrCount = document.getElementById('qrCount');
                         qrCount.textContent = parseInt(qrCount.textContent) + 1;
                         
-                        alert(`✓ QR Code found!\n${data.person_name || 'Person not matched'}`);
+                        // Show success message with photo count
+                        const photoCountMsg = data.photos_updated > 1 
+                            ? `\n${data.photos_updated} photos updated in database` 
+                            : '';
+                        alert(`✓ QR Code found!\n${data.person_name || 'Person not matched'}${photoCountMsg}`);
                     } else {
                         // No QR code found
                         photoItem.classList.remove('rescanning');

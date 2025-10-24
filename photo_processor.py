@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import logging
+from PIL import Image
 
 from qr_detector import detect_qr_in_image, parse_qr_data
 # Import models and helpers from app.py where they are defined
@@ -21,6 +22,54 @@ except Exception:
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def create_thumbnail(image_path: Path, thumbnail_path: Path, max_width: int = 400) -> bool:
+    """
+    Create a thumbnail from an image, maintaining aspect ratio.
+    
+    Args:
+        image_path: Path to original image
+        thumbnail_path: Path where thumbnail will be saved
+        max_width: Maximum width of thumbnail (height scaled proportionally)
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        # Ensure thumbnail directory exists
+        thumbnail_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Open image
+        with Image.open(image_path) as img:
+            # Convert RGBA to RGB if needed (for PNG with transparency)
+            if img.mode in ('RGBA', 'LA', 'P'):
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                img = background
+            
+            # Calculate new dimensions maintaining aspect ratio
+            width, height = img.size
+            if width > max_width:
+                new_width = max_width
+                new_height = int(height * (max_width / width))
+            else:
+                new_width, new_height = width, height
+            
+            # Resize using high-quality LANCZOS resampling
+            img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            # Save thumbnail with optimization
+            img_resized.save(thumbnail_path, 'JPEG', quality=85, optimize=True)
+            
+        logger.debug(f"Created thumbnail: {thumbnail_path.name} ({new_width}x{new_height})")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to create thumbnail for {image_path.name}: {str(e)}")
+        return False
 
 
 def db_commit_with_retry(max_attempts=5, delay=0.5):
@@ -50,11 +99,8 @@ def db_commit_with_retry(max_attempts=5, delay=0.5):
 class PhotoProcessor:
     """
     Core photo processing logic:
-    1. Sort photos by filename (camera order)
-    2. Process sequentially
-    3. Detect QR codes to start new person
-    4. Group following photos to current person
-    5. Track progress and metrics in real-time
+    PHASE 1: Scan QR codes, create thumbnails, update database only
+    PHASE 2: Create folders and copy files based on database, then upload to Drive
     """
     
     def __init__(self, batch_id: int):
@@ -63,17 +109,14 @@ class PhotoProcessor:
         if not self.batch:
             raise ValueError(f"Batch {batch_id} not found")
         
-        # No need for QR detector instance - using functions directly
-        self.current_person = None
-        self.current_person_photos = []
-        self.unmatched_photos = []
+        self.current_registration_id = None  # Track current person for grouping
         self.people_found = 0
         self.photos_processed = 0
         
         # Directories
         self.batch_dir = Path(f"uploads/batches/{batch_id}")
-        self.processed_dir = Path("uploads/processed")
-        self.processed_dir.mkdir(parents=True, exist_ok=True)
+        self.thumbnails_dir = self.batch_dir / "thumbnails"
+        self.thumbnails_dir.mkdir(parents=True, exist_ok=True)
         
     def _log_action(self, action: str, details: str = "", level: str = "info"):
         """Log processing action to database and console"""
@@ -102,83 +145,20 @@ class PhotoProcessor:
         
         db_commit_with_retry()
         
-    def _save_current_person(self):
-        """Save current person's photos to their folder locally (NO Drive upload here)"""
-        if not self.current_person or not self.current_person_photos:
-            return
-        
-        person_name = f"{self.current_person.first_name} {self.current_person.last_name}"
-        
-        # Create person's directory
-        person_dir = self.processed_dir / str(self.current_person.id)
-        person_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Copy photos to person's folder
-        photo_count = 0
-        for photo in self.current_person_photos:
-            src_path = self.batch_dir / photo.filename
-            dst_path = person_dir / photo.filename
-            
-            try:
-                shutil.copy2(src_path, dst_path)
-                photo.processed = True
-                photo_count += 1
-                db_commit_with_retry()
-                
-                self._log_action(
-                    "photo_copied",
-                    f"Copied {photo.filename} to {person_name}'s folder"
-                )
-            except Exception as e:
-                self._log_action(
-                    "photo_copy_error",
-                    f"Failed to copy {photo.filename}: {str(e)}",
-                    level="error"
-                )
-        
-        # Update registration photo count
-        self.current_person.photo_count = len(self.current_person_photos)
-        db_commit_with_retry()
-        
-        self._log_action(
-            "person_photos_saved",
-            f"{person_name}: {photo_count} photos saved locally"
-        )
-        
-    def _start_new_person(self, registration: Registration, qr_photo: Photo):
-        """Start tracking a new person. Saves previous person locally first."""
-        # Save previous person first (local only)
-        self._save_current_person()
-        
-        # Start new person
-        self.current_person = registration
-        self.current_person_photos = [qr_photo]
-        self.people_found += 1
-        
-        # Mark QR photo
-        qr_photo.is_qr_code = True
-        qr_photo.registration_id = registration.id
-        db_commit_with_retry()
-        
-        self._log_action(
-            "person_started",
-            f"Started new person: {registration.first_name} {registration.last_name} (ID: {registration.id})"
-        )
-        
     def _assign_to_current_person(self, photo: Photo):
-        """Assign photo to current person"""
-        if not self.current_person:
-            # No person yet, add to unmatched
-            self.unmatched_photos.append(photo)
+        """Assign photo to current person (database only, no file operations)"""
+        if not self.current_registration_id:
+            # No person yet - photo is before first QR code
+            # Leave registration_id as NULL
             self._log_action(
                 "photo_unmatched",
-                f"Photo {photo.filename} has no associated person (before first QR)",
-                level="warning"
+                f"Photo {photo.filename} before first QR code",
+                level="info"
             )
             return
         
-        photo.registration_id = self.current_person.id
-        self.current_person_photos.append(photo)
+        # Assign to current person in database only
+        photo.registration_id = self.current_registration_id
         db_commit_with_retry()
         
     def _match_registration(self, qr_data: Dict) -> Optional[Registration]:
@@ -278,6 +258,11 @@ class PhotoProcessor:
                     )
                     continue
                 
+                # Create thumbnail for review page (do this early so it's available even if QR fails)
+                thumbnail_path = self.thumbnails_dir / photo.filename
+                if not thumbnail_path.exists():
+                    create_thumbnail(photo_path, thumbnail_path, max_width=400)
+                
                 # Detect QR code
                 # OPTIMIZATION: Always use fast mode (enhance=False)
                 # 
@@ -301,7 +286,7 @@ class PhotoProcessor:
                     )
                 
                 if qr_result.detected and qr_result.parsed_data:
-                    # QR code detected - start new person
+                    # QR code detected - match to registration
                     self._update_batch_status(
                         current_action=f"QR detected in {photo.filename}, matching registration..."
                     )
@@ -309,14 +294,26 @@ class PhotoProcessor:
                     registration = self._match_registration(qr_result.parsed_data)
                     
                     if registration:
-                        self._start_new_person(registration, photo)
+                        # Update current person for grouping
+                        self.current_registration_id = registration.id
+                        self.people_found += 1
+                        
+                        # Mark this photo as QR code in database
+                        photo.is_qr_code = True
+                        photo.qr_data = qr_result.raw_data
+                        photo.registration_id = registration.id
+                        db_commit_with_retry()
+                        
+                        self._log_action(
+                            "person_started",
+                            f"Started new person: {registration.first_name} {registration.last_name} (ID: {registration.id})"
+                        )
                         self._update_batch_status(
-                            current_action=f"Started processing photos for {registration.first_name} {registration.last_name}"
+                            current_action=f"Found QR for {registration.first_name} {registration.last_name}"
                         )
                     else:
                         # QR detected but no match
                         photo.is_qr_code = True
-                        self.unmatched_photos.append(photo)
                         db_commit_with_retry()
                         self._log_action(
                             "qr_unmatched",
@@ -340,28 +337,27 @@ class PhotoProcessor:
                 f"All {total_photos} photos processed in Phase 1 loop"
             )
             
-            # Save last person's photos (local only)
-            self._log_action(
-                "phase1_saving_last_person",
-                "Saving last person's photos..."
-            )
-            self._save_current_person()
+            # Count unmatched photos (no registration_id)
+            unmatched_count = Photo.query.filter_by(
+                batch_id=self.batch_id,
+                registration_id=None
+            ).count()
             
             self._log_action(
                 "phase1_completed",
-                f"Phase 1 complete: {self.people_found} people found, all photos sorted locally"
+                f"Phase 1 complete: {self.people_found} people found, {unmatched_count} unmatched photos (database updated, no files copied yet)"
             )
             
             # Update batch to awaiting_review status - STOP HERE FOR MANUAL REVIEW
             self.batch.status = 'awaiting_review'
             self.batch.current_action = f'Phase 1 complete: {self.people_found} people found - Ready for manual review'
             self.batch.people_found = self.people_found
-            self.batch.unmatched_photos = len(self.unmatched_photos)
+            self.batch.unmatched_photos = unmatched_count
             db_commit_with_retry()
             
             self._log_action(
                 "awaiting_manual_review",
-                f"Batch ready for manual review: {self.people_found} people, {len(self.unmatched_photos)} unmatched photos"
+                f"Batch ready for manual review: {self.people_found} people, {unmatched_count} unmatched photos"
             )
             
             # Return Phase 1 metrics
@@ -373,7 +369,7 @@ class PhotoProcessor:
                 'status': 'awaiting_review',
                 'total_photos': total_photos,
                 'people_found': self.people_found,
-                'unmatched_photos': len(self.unmatched_photos),
+                'unmatched_photos': unmatched_count,
                 'processing_time_seconds': processing_time
             }
             
@@ -399,34 +395,95 @@ class PhotoProcessor:
     
     def process_phase2_drive_upload(self) -> Dict:
         """
-        Phase 2: Upload to Drive (called after manual review approval)
-        Separate method so it can be triggered independently
+        Phase 2: Create folders, copy files, and upload to Drive (called after manual review approval)
         """
         start_time = datetime.utcnow()
         
         try:
-            self._log_action("phase2_starting", "Starting Phase 2: Drive upload after manual approval")
+            self._log_action("phase2_starting", "Starting Phase 2: Creating folders and uploading to Drive")
             
             # Update status
             self.batch.status = 'processing'
-            self.batch.current_action = 'Phase 2: Uploading to Google Drive...'
+            self.batch.current_action = 'Phase 2: Creating person folders...'
             db_commit_with_retry()
             
             # ==============================================
-            # PHASE 2: UPLOAD TO DRIVE
+            # STEP 1: CREATE FOLDERS AND COPY FILES FROM BATCH FOLDER
             # ==============================================
-            drive_upload_success = False
-            drive_results = []
             
-            # Get all registrations that have photos
-            registrations_with_photos = Registration.query.join(Photo).filter(
+            # Get all registrations that have photos assigned in database
+            registrations_with_photos = db.session.query(Registration).join(Photo).filter(
                 Photo.batch_id == self.batch_id,
                 Photo.registration_id.isnot(None)
             ).distinct().all()
             
+            self._log_action(
+                "phase2_creating_folders",
+                f"Creating folders for {len(registrations_with_photos)} people"
+            )
+            
+            # Create processed directory
+            processed_dir = Path("uploads/processed")
+            processed_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Copy files for each person based on database assignments
+            for idx, registration in enumerate(registrations_with_photos, 1):
+                person_name = f"{registration.first_name} {registration.last_name}"
+                
+                self._update_batch_status(
+                    current_action=f"Phase 2: Copying photos for {person_name} ({idx}/{len(registrations_with_photos)})..."
+                )
+                
+                # Create person's folder
+                person_dir = processed_dir / str(registration.id)
+                person_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Get all photos assigned to this person from database
+                person_photos = Photo.query.filter_by(
+                    batch_id=self.batch_id,
+                    registration_id=registration.id
+                ).all()
+                
+                # Copy photos from batch folder to person folder
+                copied_count = 0
+                for photo in person_photos:
+                    src_path = self.batch_dir / photo.filename
+                    dst_path = person_dir / photo.filename
+                    
+                    if src_path.exists() and not dst_path.exists():
+                        try:
+                            shutil.copy2(str(src_path), str(dst_path))
+                            photo.processed = True
+                            copied_count += 1
+                        except Exception as e:
+                            self._log_action(
+                                "file_copy_error",
+                                f"Failed to copy {photo.filename} for {person_name}: {str(e)}",
+                                level="error"
+                            )
+                
+                # Update registration photo count
+                registration.photo_count = len(person_photos)
+                db_commit_with_retry()
+                
+                self._log_action(
+                    "person_folder_created",
+                    f"{person_name}: Created folder with {copied_count} photos"
+                )
+            
+            # ==============================================
+            # STEP 2: UPLOAD TO DRIVE
+            # ==============================================
+            self._update_batch_status(
+                current_action='Phase 2: Uploading to Google Drive...'
+            )
+            
+            drive_upload_success = False
+            drive_results = []
+            
             if registrations_with_photos and DriveUploader is not None:
                 try:
-                    self._log_action("phase2_started", f"Phase 2: Uploading {len(registrations_with_photos)} person folders to Google Drive")
+                    self._log_action("phase2_drive_upload_started", f"Uploading {len(registrations_with_photos)} person folders to Google Drive")
                     
                     # Use batch name as event folder name for organization
                     # Sanitize batch name for Drive folder
@@ -441,22 +498,12 @@ class PhotoProcessor:
                                 current_action=f"Phase 2: Uploading {person_name}'s photos to Drive ({idx}/{len(registrations_with_photos)})..."
                             )
                             
-                            # Get person's photos
-                            person_photos = Photo.query.filter_by(
-                                batch_id=self.batch_id,
-                                registration_id=registration.id
-                            ).all()
-                            
-                            if not person_photos:
-                                continue
-                            
-                            # Get photo file paths
-                            person_dir = self.processed_dir / str(registration.id)
+                            # Get photo file paths from person's folder
+                            person_dir = processed_dir / str(registration.id)
                             photo_paths = []
-                            for photo in person_photos:
-                                photo_path = person_dir / photo.filename
-                                if photo_path.exists():
-                                    photo_paths.append(str(photo_path))
+                            for photo_file in person_dir.glob('*'):
+                                if photo_file.is_file():
+                                    photo_paths.append(str(photo_file))
                             
                             if not photo_paths:
                                 self._log_action(

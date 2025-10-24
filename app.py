@@ -1885,6 +1885,14 @@ def create_photo_batch():
         if not batch_name or len(batch_name) > 200:
             return jsonify({'success': False, 'error': 'Invalid batch name'}), 400
         
+        # Check if batch name already exists
+        existing_batch = PhotoBatch.query.filter_by(batch_name=batch_name).first()
+        if existing_batch:
+            return jsonify({
+                'success': False, 
+                'error': f'Batch name "{batch_name}" already exists. Please choose a different name.'
+            }), 400
+        
         # Check available disk space before starting upload
         import shutil
         upload_dir = os.path.join('uploads', 'batches')
@@ -2483,7 +2491,7 @@ def photo_review_page(batch_id):
 @app.route('/admin/photos/rescan/<int:photo_id>', methods=['POST'])
 @login_required
 def rescan_photo_qr(photo_id):
-    """Rescan a photo for QR code with enhanced processing"""
+    """Rescan a photo for QR code with enhanced processing (database update only)"""
     from qr_detector import detect_qr_in_image, validate_qr_data_against_registration
     
     try:
@@ -2504,20 +2512,52 @@ def rescan_photo_qr(photo_id):
             
             # Validate QR data
             if registration and validate_qr_data_against_registration(qr_result.parsed_data, registration):
-                # Update photo record
-                photo.is_qr_code = True
-                photo.qr_data = qr_result.raw_data
-                photo.registration_id = registration.id
-                db_commit_with_retry()
+                # Find the photo group: from this QR photo until the next QR photo (or end of batch)
+                # Get all photos in this batch, ordered by filename (sequential processing order)
+                all_batch_photos = Photo.query.filter_by(
+                    batch_id=photo.batch_id
+                ).order_by(Photo.filename).all()
                 
-                app.logger.info(f"QR code found in {photo.filename}: {registration.first_name} {registration.last_name}")
+                # Find the index of current photo
+                current_index = None
+                for idx, p in enumerate(all_batch_photos):
+                    if p.id == photo.id:
+                        current_index = idx
+                        break
                 
-                return jsonify({
-                    'success': True,
-                    'qr_detected': True,
-                    'person_name': f"{registration.first_name} {registration.last_name}",
-                    'registration_id': registration.id
-                })
+                if current_index is not None:
+                    # Find photos in this group: from current photo until next QR code
+                    photos_to_update = [photo]  # Start with the QR photo itself
+                    
+                    # Add all following photos until we hit another QR code
+                    for idx in range(current_index + 1, len(all_batch_photos)):
+                        next_photo = all_batch_photos[idx]
+                        if next_photo.is_qr_code:
+                            # Hit the next QR code, stop here
+                            break
+                        photos_to_update.append(next_photo)
+                    
+                    app.logger.info(f"Found photo group: {len(photos_to_update)} photos from {photo.filename} to {photos_to_update[-1].filename}")
+                    
+                    # Update all photos in the group (database only, no file operations)
+                    for group_photo in photos_to_update:
+                        group_photo.registration_id = registration.id
+                        if group_photo.id == photo.id:
+                            # Mark the rescanned photo as QR code
+                            group_photo.is_qr_code = True
+                            group_photo.qr_data = qr_result.raw_data
+                    
+                    db_commit_with_retry()
+                    
+                    app.logger.info(f"Updated {len(photos_to_update)} photos in database for {registration.first_name} {registration.last_name}")
+                    
+                    return jsonify({
+                        'success': True,
+                        'qr_detected': True,
+                        'person_name': f"{registration.first_name} {registration.last_name}",
+                        'registration_id': registration.id,
+                        'photos_updated': len(photos_to_update)
+                    })
             else:
                 app.logger.warning(f"QR code found but validation failed for {photo.filename}")
                 return jsonify({
