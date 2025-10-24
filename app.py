@@ -1056,14 +1056,69 @@ def admin_send_bulk_photos():
 @app.route('/admin/delete-registration/<int:registration_id>', methods=['POST'])
 @login_required
 def admin_delete_registration(registration_id):
-    """Delete a single registration"""
+    """Delete a single registration and all associated data"""
     try:
         registration = Registration.query.get_or_404(registration_id)
         name = f"{registration.first_name} {registration.last_name}"
+        
+        # Collect Drive folder info before deletion
+        drive_folder_id = registration.drive_folder_id
+        drive_folder_deleted = False
+        
+        # Delete associated photos from database
+        photos = Photo.query.filter_by(registration_id=registration_id).all()
+        photo_count = len(photos)
+        for photo in photos:
+            db.session.delete(photo)
+        
+        # Delete the registration
         db.session.delete(registration)
-        db.session.commit()
-        flash(f'Registration for {name} has been deleted', 'success')
+        db_commit_with_retry()
+        
+        # Delete physical photo files (from processed folder)
+        import shutil
+        deleted_dirs = []
+        
+        # Find all batch processed directories that might contain this person's photos
+        processed_base = Path("uploads/processed")
+        if processed_base.exists():
+            # Look for folders named after this person in any batch
+            for batch_dir in processed_base.iterdir():
+                if batch_dir.is_dir():
+                    person_dir = batch_dir / name
+                    if person_dir.exists():
+                        shutil.rmtree(person_dir)
+                        deleted_dirs.append(str(person_dir))
+                        app.logger.info(f"Deleted processed photos directory: {person_dir}")
+        
+        # Delete Drive folder if it exists
+        if drive_folder_id:
+            try:
+                from drive_uploader import delete_drive_folder
+                token = DriveOAuthToken.query.filter_by(user_identifier='admin').first()
+                
+                if token and not token.is_expired():
+                    delete_drive_folder(drive_folder_id, token.access_token)
+                    drive_folder_deleted = True
+                    app.logger.info(f"Deleted Drive folder for {name}")
+                else:
+                    app.logger.warning(f"Drive token not available - folder not deleted for {name}")
+            except Exception as drive_error:
+                app.logger.warning(f"Could not delete Drive folder for {name}: {drive_error}")
+        
+        # Build success message
+        success_msg = f'Registration for {name} deleted'
+        if photo_count > 0:
+            success_msg += f' ({photo_count} photos removed)'
+        if deleted_dirs:
+            success_msg += f', {len(deleted_dirs)} local folder(s) deleted'
+        if drive_folder_deleted:
+            success_msg += ', Drive folder deleted'
+        
+        flash(success_msg, 'success')
+        
     except Exception as e:
+        db.session.rollback()
         app.logger.error(f'Failed to delete registration: {str(e)}')
         flash(f'Error deleting registration: {str(e)}', 'error')
     
@@ -2297,12 +2352,20 @@ def delete_photo_batch(batch_id):
         db.session.delete(batch)
         db_commit_with_retry()
         
-        # Delete physical files
+        # Delete physical files - both upload and processed directories
         import shutil
+        
+        # Delete upload directory (original uploaded photos)
         batch_dir = Path(f"uploads/batches/{batch_id}")
         if batch_dir.exists():
             shutil.rmtree(batch_dir)
-            app.logger.info(f"Deleted batch directory: {batch_dir}")
+            app.logger.info(f"Deleted batch upload directory: {batch_dir}")
+        
+        # Delete processed directory (organized photos by person)
+        processed_dir = Path(f"uploads/processed/{batch_id}")
+        if processed_dir.exists():
+            shutil.rmtree(processed_dir)
+            app.logger.info(f"Deleted batch processed directory: {processed_dir}")
         
         # Delete Drive folders if they exist
         deleted_folders = 0
