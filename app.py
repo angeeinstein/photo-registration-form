@@ -1792,6 +1792,7 @@ def create_photo_batch():
 
 @app.route('/admin/photos/batch/<int:batch_id>/uploaded-files', methods=['GET'])
 @login_required
+@limiter.exempt  # Exempt from rate limiting - used during batch resume
 def get_uploaded_files(batch_id):
     """Get list of already uploaded filenames for this batch (for resume functionality)"""
     try:
@@ -1814,6 +1815,7 @@ def get_uploaded_files(batch_id):
 
 @app.route('/admin/photos/upload-file', methods=['POST'])
 @login_required
+@limiter.exempt  # Exempt from rate limiting - batch uploads can have 100+ photos
 def upload_photo_file():
     """Upload a single photo file to a batch"""
     try:
