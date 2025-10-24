@@ -46,6 +46,7 @@ app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
 
 # File upload configuration
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max upload size
+app.config['UPLOAD_FOLDER'] = os.path.join(basedir, 'uploads', 'batches')
 
 # Initialize CSRF protection
 csrf = CSRFProtect(app)
@@ -770,6 +771,14 @@ def admin_dashboard():
                 error='Database schema mismatch detected. The database needs to be migrated to support new photo workflow features. Please run the migration script.'), 500
         # Re-raise for general error handler
         raise
+
+@app.route('/uploads/<path:filename>')
+@login_required
+def serve_uploaded_file(filename):
+    """Serve uploaded files from the uploads directory"""
+    from flask import send_from_directory
+    uploads_dir = os.path.join(basedir, 'uploads')
+    return send_from_directory(uploads_dir, filename)
 
 @app.route('/admin/batches/status')
 @login_required
