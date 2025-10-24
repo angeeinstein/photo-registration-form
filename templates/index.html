@@ -18,7 +18,14 @@
         
         <div id="messageBox" class="message"></div>
         
-        {% if code_required %}
+        {% if registrations_closed %}
+        <!-- Registration Closed Message -->
+        <div class="access-denied" style="text-align: center; padding: 2rem;">
+            <div style="font-size: 4rem; margin-bottom: 1rem;">🚫</div>
+            <h2>Registration Closed</h2>
+            <p style="margin: 1rem 0; font-size: 1.1rem; line-height: 1.6;">{{ closed_message }}</p>
+        </div>
+        {% elif code_required %}
         <!-- Access Denied - Event Code Required -->
         <div class="access-denied" style="text-align: center; padding: 2rem;">
             <div style="font-size: 4rem; margin-bottom: 1rem;">🔒</div>

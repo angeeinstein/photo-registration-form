@@ -493,6 +493,20 @@ def internal_error(e):
 @app.route('/')
 def index():
     """Display the registration form - requires event code"""
+    # Check if registrations are enabled
+    try:
+        registrations_enabled = AdminSettings.get_setting('REGISTRATIONS_ENABLED', 'true').lower() == 'true'
+        closed_message = AdminSettings.get_setting('REGISTRATIONS_CLOSED_MESSAGE', 'Registration is currently closed.')
+    except:
+        registrations_enabled = True
+        closed_message = 'Registration is currently closed.'
+    
+    if not registrations_enabled:
+        # Registrations are closed - show closed message
+        return render_template('index.html', 
+                             registrations_closed=True, 
+                             closed_message=closed_message)
+    
     # Get event code from environment or settings
     try:
         required_code = AdminSettings.get_setting('EVENT_CODE', os.getenv('EVENT_CODE', ''))
@@ -518,6 +532,18 @@ def index():
 def register():
     """Handle registration form submission"""
     try:
+        # Check if registrations are enabled
+        try:
+            registrations_enabled = AdminSettings.get_setting('REGISTRATIONS_ENABLED', 'true').lower() == 'true'
+        except:
+            registrations_enabled = True
+        
+        if not registrations_enabled:
+            return jsonify({
+                'success': False,
+                'error': 'Registration is currently closed. Please try again later.'
+            }), 403
+        
         data = request.form
         
         # Validate event code if configured
@@ -897,6 +923,15 @@ def admin_settings():
         send_confirmation = request.form.get('send_confirmation', 'false')
         AdminSettings.set_setting('SEND_CONFIRMATION_EMAIL', send_confirmation)
         
+        # Update registration enabled setting
+        registrations_enabled = request.form.get('registrations_enabled', 'false')
+        AdminSettings.set_setting('REGISTRATIONS_ENABLED', registrations_enabled)
+        
+        # Update registration closed message
+        closed_message = request.form.get('closed_message', '').strip()
+        if closed_message:
+            AdminSettings.set_setting('REGISTRATIONS_CLOSED_MESSAGE', closed_message)
+        
         # Update default email account selections
         confirmation_account_id = request.form.get('confirmation_account_id', '')
         photos_account_id = request.form.get('photos_account_id', '')
@@ -915,6 +950,8 @@ def admin_settings():
     
     # Load current settings
     send_confirmation = AdminSettings.get_setting('SEND_CONFIRMATION_EMAIL', os.getenv('SEND_CONFIRMATION_EMAIL', 'true'))
+    registrations_enabled = AdminSettings.get_setting('REGISTRATIONS_ENABLED', 'true')
+    closed_message = AdminSettings.get_setting('REGISTRATIONS_CLOSED_MESSAGE', 'Registration is currently closed. Please check back later.')
     confirmation_account_id = AdminSettings.get_setting('DEFAULT_CONFIRMATION_ACCOUNT_ID', '')
     photos_account_id = AdminSettings.get_setting('DEFAULT_PHOTOS_ACCOUNT_ID', '')
     test_account_id = AdminSettings.get_setting('DEFAULT_TEST_ACCOUNT_ID', '')
@@ -925,6 +962,8 @@ def admin_settings():
     
     return render_template('admin_settings.html', 
                          send_confirmation=send_confirmation,
+                         registrations_enabled=registrations_enabled,
+                         closed_message=closed_message,
                          confirmation_account_id=confirmation_account_id,
                          photos_account_id=photos_account_id,
                          test_account_id=test_account_id,

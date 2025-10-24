@@ -216,7 +216,39 @@
             </div>
 
             <div class="form-section">
-                <h2>🔒 Event Security Code</h2>
+                <h2>� Registration Control</h2>
+                <p style="color: #666; margin-bottom: 20px; font-size: 14px;">
+                    Control whether new registrations are accepted and customize the message shown to visitors when registration is closed.
+                </p>
+                
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Accept New Registrations</div>
+                        <div class="setting-description">Enable or disable the registration form for visitors</div>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="registrations_enabled" name="registrations_enabled" value="true"
+                               {% if registrations_enabled == 'true' %}checked{% endif %}>
+                        <label for="registrations_enabled">Enable</label>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Closed Message</div>
+                        <div class="setting-description">Message shown to visitors when registration is disabled</div>
+                    </div>
+                    <div style="flex: 1; max-width: 500px;">
+                        <textarea name="closed_message" id="closed_message" 
+                                  rows="3"
+                                  style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-family: inherit; resize: vertical;"
+                                  placeholder="Registration is currently closed. Please check back later.">{{ closed_message }}</textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h2>�🔒 Event Security Code</h2>
                 <p style="color: #666; margin-bottom: 20px; font-size: 14px;">
                     Require users to have an event code to access the registration form. 
                     Use this to restrict access via posters, QR codes, or email invitations.
