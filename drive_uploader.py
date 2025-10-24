@@ -543,3 +543,41 @@ class DriveUploader:
                 'success': False,
                 'error': str(e)
             }
+
+
+def delete_drive_folder(folder_id: str, access_token: str) -> bool:
+    """
+    Delete a folder from Google Drive using OAuth access token.
+    
+    Args:
+        folder_id: Google Drive folder ID to delete
+        access_token: Valid OAuth access token
+        
+    Returns:
+        True if deletion successful, False otherwise
+        
+    Raises:
+        Exception if deletion fails
+    """
+    try:
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+        
+        # Create credentials with the access token
+        credentials = Credentials(token=access_token)
+        
+        # Build Drive service
+        service = build('drive', 'v3', credentials=credentials)
+        
+        # Delete the folder (this moves it to trash)
+        service.files().delete(fileId=folder_id).execute()
+        
+        logger.info(f"Successfully deleted Drive folder: {folder_id}")
+        return True
+        
+    except HttpError as e:
+        logger.error(f"Failed to delete Drive folder {folder_id}: {e}")
+        raise Exception(f"Drive API error: {e}")
+    except Exception as e:
+        logger.error(f"Error deleting Drive folder {folder_id}: {e}")
+        raise

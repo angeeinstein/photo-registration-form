@@ -2254,9 +2254,36 @@ def delete_photo_batch(batch_id):
         batch = PhotoBatch.query.get_or_404(batch_id)
         batch_name = batch.batch_name
         
-        # Delete all photos in this batch
+        # Get all photos in this batch to find associated registrations
         photos = Photo.query.filter_by(batch_id=batch_id).all()
         photo_count = len(photos)
+        
+        # Find all registrations that were part of this batch
+        registration_ids = {photo.registration_id for photo in photos if photo.registration_id}
+        affected_registrations = []
+        drive_folders_to_delete = []
+        
+        if registration_ids:
+            registrations = Registration.query.filter(Registration.id.in_(registration_ids)).all()
+            affected_registrations = registrations
+            
+            # Collect Drive folder IDs for deletion
+            for reg in registrations:
+                if reg.drive_folder_id:
+                    drive_folders_to_delete.append({
+                        'folder_id': reg.drive_folder_id,
+                        'person_name': f"{reg.first_name} {reg.last_name}"
+                    })
+                
+                # Reset photo-related fields
+                reg.drive_folder_id = None
+                reg.drive_share_link = None
+                reg.photos_email_sent = False
+                # Don't reset photos_sent (old manual workflow flag)
+            
+            app.logger.info(f"Resetting {len(registrations)} registrations associated with batch {batch_id}")
+        
+        # Delete all photos in this batch
         for photo in photos:
             db.session.delete(photo)
         
@@ -2268,7 +2295,7 @@ def delete_photo_batch(batch_id):
         
         # Delete the batch itself
         db.session.delete(batch)
-        db.session.commit()
+        db_commit_with_retry()
         
         # Delete physical files
         import shutil
@@ -2277,7 +2304,33 @@ def delete_photo_batch(batch_id):
             shutil.rmtree(batch_dir)
             app.logger.info(f"Deleted batch directory: {batch_dir}")
         
-        flash(f'Batch "{batch_name}" deleted successfully ({photo_count} photos, {log_count} logs)', 'success')
+        # Delete Drive folders if they exist
+        deleted_folders = 0
+        if drive_folders_to_delete:
+            try:
+                from drive_uploader import delete_drive_folder
+                token = DriveOAuthToken.query.filter_by(user_identifier='admin').first()
+                
+                if token and not token.is_expired():
+                    for folder_info in drive_folders_to_delete:
+                        try:
+                            delete_drive_folder(folder_info['folder_id'], token.access_token)
+                            deleted_folders += 1
+                            app.logger.info(f"Deleted Drive folder for {folder_info['person_name']}")
+                        except Exception as folder_error:
+                            app.logger.warning(f"Could not delete Drive folder for {folder_info['person_name']}: {folder_error}")
+                else:
+                    app.logger.warning("Drive token not available or expired - folders not deleted from Drive")
+            except Exception as drive_error:
+                app.logger.warning(f"Error deleting Drive folders: {drive_error}")
+        
+        success_msg = f'Batch "{batch_name}" deleted successfully ({photo_count} photos, {log_count} logs)'
+        if affected_registrations:
+            success_msg += f', {len(affected_registrations)} people reset'
+        if deleted_folders:
+            success_msg += f', {deleted_folders} Drive folders deleted'
+        
+        flash(success_msg, 'success')
         app.logger.info(f"Deleted batch {batch_id}: {batch_name}")
         
     except Exception as e:
