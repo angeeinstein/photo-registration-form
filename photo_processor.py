@@ -352,6 +352,48 @@ class PhotoProcessor:
                 f"Phase 1 complete: {self.people_found} people found, all photos sorted locally"
             )
             
+            # Update batch to awaiting_review status - STOP HERE FOR MANUAL REVIEW
+            self.batch.status = 'awaiting_review'
+            self.batch.current_action = f'Phase 1 complete: {self.people_found} people found - Ready for manual review'
+            self.batch.people_found = self.people_found
+            self.batch.unmatched_photos = len(self.unmatched_photos)
+            db_commit_with_retry()
+            
+            self._log_action(
+                "awaiting_manual_review",
+                f"Batch ready for manual review: {self.people_found} people, {len(self.unmatched_photos)} unmatched photos"
+            )
+            
+            # Return Phase 1 metrics
+            end_time = datetime.utcnow()
+            processing_time = (end_time - start_time).total_seconds()
+            
+            metrics = {
+                'phase': 1,
+                'status': 'awaiting_review',
+                'total_photos': total_photos,
+                'people_found': self.people_found,
+                'unmatched_photos': len(self.unmatched_photos),
+                'processing_time_seconds': processing_time
+            }
+            
+            return metrics
+    
+    def process_phase2_drive_upload(self) -> Dict:
+        """
+        Phase 2: Upload to Drive (called after manual review approval)
+        Separate method so it can be triggered independently
+        """
+        start_time = datetime.utcnow()
+        
+        try:
+            self._log_action("phase2_starting", "Starting Phase 2: Drive upload after manual approval")
+            
+            # Update status
+            self.batch.status = 'processing'
+            self.batch.current_action = 'Phase 2: Uploading to Google Drive...'
+            db_commit_with_retry()
+            
             # ==============================================
             # PHASE 2: UPLOAD TO DRIVE
             # ==============================================
@@ -478,17 +520,6 @@ class PhotoProcessor:
             end_time = datetime.utcnow()
             processing_time = (end_time - start_time).total_seconds()
             
-            metrics = {
-                'total_photos': total_photos,
-                'photos_processed': self.photos_processed,
-                'people_found': self.people_found,
-                'unmatched_photos': len(self.unmatched_photos),
-                'processing_time_seconds': processing_time,
-                'drive_uploads': len(drive_results),
-                'drive_uploads_successful': sum(1 for r in drive_results if r['success']),
-                'success': True
-            }
-            
             # Update batch status and metrics
             self.batch.people_found = self.people_found
             self.batch.unmatched_photos = len(self.unmatched_photos)
@@ -503,28 +534,33 @@ class PhotoProcessor:
                 f"✓ Batch completed in {processing_time:.1f}s - {self.people_found} people, {sum(1 for r in drive_results if r['success'])} uploaded to Drive"
             )
             
+            metrics = {
+                'phase': 2,
+                'status': 'completed',
+                'drive_uploads': len(drive_results),
+                'drive_uploads_successful': sum(1 for r in drive_results if r['success']),
+                'processing_time_seconds': processing_time,
+                'success': True
+            }
+            
             return metrics
             
         except Exception as e:
             self.batch.error_message = str(e)
-            self.batch.people_found = self.people_found
-            self.batch.unmatched_photos = len(self.unmatched_photos)
             self._update_batch_status(
                 status="error",
-                current_action=f"Processing failed: {str(e)}"
+                current_action=f"Phase 2 failed: {str(e)}"
             )
             self._log_action(
-                "batch_processing_error",
-                f"Fatal error: {str(e)}",
+                "phase2_error",
+                f"Fatal error in Phase 2: {str(e)}",
                 level="error"
             )
             
             return {
                 'success': False,
                 'error': str(e),
-                'photos_processed': self.photos_processed,
-                'people_found': self.people_found,
-                'unmatched_photos': len(self.unmatched_photos)
+                'phase': 2
             }
     
     def get_progress(self) -> Dict:

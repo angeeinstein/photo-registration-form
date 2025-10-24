@@ -745,6 +745,36 @@ def admin_dashboard():
         # Re-raise for general error handler
         raise
 
+@app.route('/admin/batches/status')
+@login_required
+@limiter.exempt  # Exempt from rate limiting - used for dashboard live polling
+@db_retry(max_attempts=3, delay=0.3)
+def get_batches_status():
+    """Get status of all photo batches for live dashboard updates"""
+    try:
+        # Get the most recent 10 batches
+        batches = PhotoBatch.query.order_by(PhotoBatch.upload_time.desc()).limit(10).all()
+        
+        batch_data = []
+        for batch in batches:
+            batch_data.append({
+                'id': batch.id,
+                'status': batch.status,
+                'batch_name': batch.batch_name,
+                'total_photos': batch.total_photos,
+                'processed_photos': batch.processed_photos,
+                'current_action': batch.current_action,
+                'upload_time': batch.upload_time.isoformat() if batch.upload_time else None
+            })
+        
+        return jsonify({
+            'success': True,
+            'batches': batch_data
+        })
+    except Exception as e:
+        app.logger.error(f'Error getting batches status: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/admin/export/registrations.csv')
 @login_required
 def export_registrations_csv():
@@ -1456,6 +1486,7 @@ def admin_test_account(account_id):
 
 @app.route('/admin/drive/oauth/status')
 @login_required
+@limiter.exempt  # Exempt from rate limiting - used for status checking
 def admin_drive_oauth_status():
     """Get OAuth connection status"""
     try:
@@ -1751,6 +1782,29 @@ def create_photo_batch():
         if not batch_name or len(batch_name) > 200:
             return jsonify({'success': False, 'error': 'Invalid batch name'}), 400
         
+        # Check available disk space before starting upload
+        import shutil
+        upload_dir = os.path.join('uploads', 'batches')
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        try:
+            disk_stats = shutil.disk_usage(upload_dir)
+            free_space_mb = disk_stats.free / (1024 * 1024)
+            required_space_mb = total_size_mb * 1.2  # 20% buffer for safety
+            
+            if free_space_mb < required_space_mb:
+                return jsonify({
+                    'success': False,
+                    'error': f'Insufficient disk space. Required: {required_space_mb:.0f} MB, Available: {free_space_mb:.0f} MB'
+                }), 507  # HTTP 507 Insufficient Storage
+            
+            # Warn if less than 1GB free after upload
+            if free_space_mb - total_size_mb < 1024:
+                app.logger.warning(f'Low disk space warning: {free_space_mb:.0f} MB available, uploading {total_size_mb:.0f} MB')
+        except Exception as disk_err:
+            app.logger.error(f'Failed to check disk space: {str(disk_err)}')
+            # Continue anyway - don't block upload on disk check failure
+        
         # Create batch record
         batch = PhotoBatch(
             batch_name=batch_name,
@@ -2018,6 +2072,46 @@ def force_batch_ready(batch_id):
         app.logger.error(f'Error recovering batch: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/admin/photos/batch/<int:batch_id>/mark-error', methods=['POST'])
+@login_required
+def mark_batch_error(batch_id):
+    """Mark a batch as error when upload fails"""
+    try:
+        batch = PhotoBatch.query.get_or_404(batch_id)
+        data = request.get_json()
+        
+        error_message = data.get('error_message', 'Upload failed')
+        uploaded_count = data.get('uploaded_count', 0)
+        
+        # Update batch status to error
+        batch.status = 'error'
+        batch.current_action = f'Upload failed: {error_message}'
+        batch.processed_photos = uploaded_count
+        
+        # Update actual photo count from database
+        actual_count = Photo.query.filter_by(batch_id=batch_id).count()
+        batch.total_photos = actual_count
+        
+        # Log error
+        log = ProcessingLog(
+            batch_id=batch_id,
+            action='upload_failed',
+            message=f'Upload failed after {actual_count} photos: {error_message}',
+            level='error'
+        )
+        db.session.add(log)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Batch marked as error'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f'Error marking batch as failed: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/admin/photos/process/<int:batch_id>')
 @login_required
 def process_photo_batch_page(batch_id):
@@ -2025,7 +2119,7 @@ def process_photo_batch_page(batch_id):
     batch = PhotoBatch.query.get_or_404(batch_id)
     
     # Allow viewing progress during processing, or starting new processing
-    if batch.status not in ['uploaded', 'error', 'processing', 'completed']:
+    if batch.status not in ['uploaded', 'error', 'processing', 'completed', 'awaiting_review']:
         flash(f'Batch cannot be processed in current status: {batch.status}', 'error')
         return redirect(url_for('admin_dashboard'))
     
@@ -2082,6 +2176,7 @@ def start_batch_processing(batch_id):
 
 @app.route('/admin/photos/process/<int:batch_id>/status')
 @login_required
+@limiter.exempt  # Exempt from rate limiting - used for real-time status polling
 @db_retry(max_attempts=3, delay=0.3)
 def get_processing_status(batch_id):
     """Get current processing status (for real-time updates)"""
@@ -2191,6 +2286,137 @@ def delete_photo_batch(batch_id):
         flash(f'Error deleting batch: {str(e)}', 'error')
     
     return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/photos/review/<int:batch_id>')
+@login_required
+def photo_review_page(batch_id):
+    """Manual QR review page - shown after Phase 1 processing"""
+    batch = PhotoBatch.query.get_or_404(batch_id)
+    
+    # Get all photos in batch, ordered by filename
+    photos = Photo.query.filter_by(batch_id=batch_id).order_by(Photo.filename).all()
+    
+    # Get photos with QR codes
+    qr_photos = [p for p in photos if p.is_qr_code]
+    
+    # Get all registrations
+    all_registrations = Registration.query.order_by(Registration.last_name, Registration.first_name).all()
+    registrations_count = len(all_registrations)
+    
+    # Find registrations that have QR codes detected
+    found_registration_ids = {p.registration_id for p in qr_photos if p.registration_id}
+    
+    # Find missing registrations (people without QR codes)
+    missing_registrations = [r for r in all_registrations if r.id not in found_registration_ids]
+    
+    return render_template('admin_photo_review.html',
+                          batch=batch,
+                          photos=photos,
+                          qr_photos=qr_photos,
+                          registrations_count=registrations_count,
+                          missing_registrations=missing_registrations)
+
+@app.route('/admin/photos/rescan/<int:photo_id>', methods=['POST'])
+@login_required
+def rescan_photo_qr(photo_id):
+    """Rescan a photo for QR code with enhanced processing"""
+    from qr_detector import detect_qr_in_image, validate_qr_data_against_registration
+    
+    try:
+        photo = Photo.query.get_or_404(photo_id)
+        photo_path = os.path.join(app.config['UPLOAD_FOLDER'], str(photo.batch_id), photo.filename)
+        
+        if not os.path.exists(photo_path):
+            return jsonify({'success': False, 'error': 'Photo file not found'}), 404
+        
+        # Rescan with enhanced processing (enhance=True)
+        app.logger.info(f"Rescanning photo {photo.filename} with enhanced QR detection")
+        qr_result = detect_qr_in_image(photo_path, enhance=True)
+        
+        if qr_result.detected and qr_result.parsed_data:
+            # Find matching registration
+            registration_id = qr_result.parsed_data.get('registration_id')
+            registration = Registration.query.get(registration_id) if registration_id else None
+            
+            # Validate QR data
+            if registration and validate_qr_data_against_registration(qr_result.parsed_data, registration):
+                # Update photo record
+                photo.is_qr_code = True
+                photo.qr_data = qr_result.raw_data
+                photo.registration_id = registration.id
+                db_commit_with_retry()
+                
+                app.logger.info(f"QR code found in {photo.filename}: {registration.first_name} {registration.last_name}")
+                
+                return jsonify({
+                    'success': True,
+                    'qr_detected': True,
+                    'person_name': f"{registration.first_name} {registration.last_name}",
+                    'registration_id': registration.id
+                })
+            else:
+                app.logger.warning(f"QR code found but validation failed for {photo.filename}")
+                return jsonify({
+                    'success': True,
+                    'qr_detected': False,
+                    'error': 'QR code found but validation failed'
+                })
+        else:
+            app.logger.info(f"No QR code found in {photo.filename} after enhanced scan")
+            return jsonify({
+                'success': True,
+                'qr_detected': False,
+                'error': 'No QR code found'
+            })
+            
+    except Exception as e:
+        app.logger.error(f"Error rescanning photo {photo_id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/admin/photos/approve-review/<int:batch_id>', methods=['POST'])
+@login_required
+def approve_batch_review(batch_id):
+    """Approve manual review and start Phase 2 (Drive upload)"""
+    try:
+        batch = PhotoBatch.query.get_or_404(batch_id)
+        
+        if batch.status != 'awaiting_review':
+            return jsonify({'success': False, 'error': f'Batch is not awaiting review (status: {batch.status})'}), 400
+        
+        # Count QR codes and registrations for validation
+        qr_count = Photo.query.filter_by(batch_id=batch_id, is_qr_code=True).count()
+        registrations_count = Registration.query.count()
+        
+        app.logger.info(f"Approving batch {batch_id} review: {qr_count} QR codes, {registrations_count} registrations")
+        
+        # Update batch status to processing for Phase 2
+        batch.status = 'processing'
+        db_commit_with_retry()
+        
+        # Start Phase 2 processing in background thread
+        from photo_processor import PhotoProcessor
+        processor = PhotoProcessor(app.config, db)
+        
+        def run_phase2():
+            with app.app_context():
+                processor.process_phase2_drive_upload(batch_id)
+        
+        import threading
+        thread = threading.Thread(target=run_phase2)
+        thread.daemon = True
+        thread.start()
+        
+        app.logger.info(f"Started Phase 2 processing for batch {batch_id}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Phase 2 processing started',
+            'redirect': url_for('admin_photo_processing', batch_id=batch_id)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error approving batch review {batch_id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/admin/photos/batch-results/<int:batch_id>')
 @login_required

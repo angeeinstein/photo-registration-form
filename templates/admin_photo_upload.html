@@ -487,12 +487,36 @@
                         alreadyUploadedFiles = data.uploaded_files;
                         console.log(`Resume mode: ${alreadyUploadedFiles.length} files already uploaded`);
                         
-                        // Show info message
+                        // Sort filenames to find the last one
+                        const sortedFiles = [...alreadyUploadedFiles].sort();
+                        const lastFile = sortedFiles[sortedFiles.length - 1] || 'N/A';
+                        
+                        // Show detailed resume info
                         const infoDiv = document.createElement('div');
-                        infoDiv.style.cssText = 'background: #e8f5e9; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #4CAF50;';
+                        infoDiv.style.cssText = 'background: #e3f2fd; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #2196F3;';
                         infoDiv.innerHTML = `
-                            <strong>📋 Resume Mode:</strong> ${alreadyUploadedFiles.length} photos already uploaded.<br>
-                            Select files to upload - already uploaded files will be automatically skipped.
+                            <div style="display: flex; align-items: center; margin-bottom: 15px;">
+                                <span style="font-size: 32px; margin-right: 15px;">�</span>
+                                <div>
+                                    <strong style="font-size: 18px; color: #1976D2;">Resume Upload Status</strong>
+                                    <div style="color: #555; margin-top: 5px;">Upload stopped - you can continue from where you left off</div>
+                                </div>
+                            </div>
+                            <div style="background: white; padding: 15px; border-radius: 5px; margin-top: 10px;">
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                                    <div>
+                                        <div style="color: #666; font-size: 13px; margin-bottom: 5px;">📁 Files Uploaded</div>
+                                        <div style="font-size: 24px; font-weight: bold; color: #4CAF50;">${alreadyUploadedFiles.length}</div>
+                                    </div>
+                                    <div style="border-left: 2px solid #eee; padding-left: 15px;">
+                                        <div style="color: #666; font-size: 13px; margin-bottom: 5px;">📸 Last File Uploaded</div>
+                                        <div style="font-size: 14px; font-weight: 500; color: #333; word-break: break-all;">${lastFile}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 5px; border-left: 3px solid #ffc107;">
+                                <strong>ℹ️ How to resume:</strong> Select all photos again - already uploaded files will be automatically skipped.
+                            </div>
                         `;
                         document.querySelector('.batch-name-input').insertAdjacentElement('beforebegin', infoDiv);
                     }
@@ -602,13 +626,23 @@
             uploadStartTime = Date.now();
 
             // Filter out already uploaded files in resume mode
+            let skippedCount = 0;
             if (resumeBatchId && alreadyUploadedFiles.length > 0) {
                 const originalCount = selectedFiles.length;
                 selectedFiles = selectedFiles.filter(file => !alreadyUploadedFiles.includes(file.name));
-                const skippedCount = originalCount - selectedFiles.length;
+                skippedCount = originalCount - selectedFiles.length;
                 
                 if (skippedCount > 0) {
                     console.log(`Skipped ${skippedCount} already uploaded files`);
+                    
+                    // Update progress header to show resume mode
+                    const progressHeader = document.querySelector('#progressSection h3');
+                    progressHeader.innerHTML = `
+                        📤 Upload Progress 
+                        <span style="color: #4CAF50; font-size: 14px; font-weight: normal;">
+                            (Resuming - ${alreadyUploadedFiles.length} files already uploaded, ${skippedCount} skipped)
+                        </span>
+                    `;
                 }
                 
                 if (selectedFiles.length === 0) {
@@ -619,8 +653,18 @@
             }
 
             // Update totals
-            document.getElementById('totalCount').textContent = selectedFiles.length;
+            const totalFilesToUpload = selectedFiles.length;
             const totalSizeMB = (selectedFiles.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024)).toFixed(2);
+            
+            // In resume mode, show already uploaded + remaining
+            if (resumeBatchId && alreadyUploadedFiles.length > 0) {
+                const grandTotal = alreadyUploadedFiles.length + totalFilesToUpload;
+                document.getElementById('totalCount').textContent = grandTotal;
+                document.getElementById('uploadedCount').textContent = alreadyUploadedFiles.length;
+            } else {
+                document.getElementById('totalCount').textContent = totalFilesToUpload;
+            }
+            
             document.getElementById('totalSize').textContent = `${totalSizeMB} MB`;
 
             // Create batch or use existing batch (resume mode)
@@ -656,8 +700,34 @@
 
             } catch (error) {
                 console.error('Upload error:', error);
-                alert('Upload failed: ' + error.message);
-                location.reload();
+                // Error already reported to user, batch status already set
+                // Just reload to show the error state
+                setTimeout(() => {
+                    window.location.href = '/admin';
+                }, 3000);
+            }
+        }
+        
+        // Mark batch as error state in database
+        async function markBatchAsError(filename, errorMsg) {
+            try {
+                const response = await fetch(`/admin/photos/batch/${currentBatchId}/mark-error`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
+                    },
+                    body: JSON.stringify({
+                        error_message: `Upload failed at ${filename}: ${errorMsg}`,
+                        uploaded_count: uploadedFiles.length
+                    })
+                });
+                
+                if (response.ok) {
+                    console.log('Batch marked as error in database');
+                }
+            } catch (err) {
+                console.error('Failed to mark batch as error:', err);
             }
         }
 
@@ -723,7 +793,12 @@
                     return uploadFile(file, index, retryCount + 1);
                 } else {
                     console.error(`Failed to upload ${file.name} after ${MAX_RETRIES} attempts`);
-                    alert(`Failed to upload ${file.name}. Please try again.`);
+                    
+                    // Mark batch as error state
+                    await markBatchAsError(file.name, error.message);
+                    
+                    alert(`Upload failed for ${file.name} after ${MAX_RETRIES} attempts.\n\nError: ${error.message}\n\nYou can use "Resume Upload" to continue from where you left off.`);
+                    throw error; // Stop the upload
                 }
             }
         }

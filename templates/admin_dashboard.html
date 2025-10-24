@@ -108,7 +108,7 @@
                             <span class="badge sent" title="Old manual workflow - photos link was sent via dashboard">📷 Manual Send</span>
                         {% endif %}
                         {% if reg.drive_share_link %}
-                            <span class="badge" style="background: #4CAF50;" title="Photos processed via batch workflow with Google Drive link">🔗 Has Drive Link</span>
+                            <span class="badge" style="background: #4CAF50;" title="Photos processed and Google Drive folder created">� Folder Created</span>
                         {% endif %}
                         {% if reg.photos_email_sent %}
                             <span class="badge" style="background: #2196F3;" title="Photo delivery email sent automatically">📧 Email Sent</span>
@@ -203,9 +203,15 @@
                                     ▶️ Resume Upload
                                 </a>
                                 <button onclick="recoverBatch({{ batch.id }})" 
-                                        class="btn" style="background: #ff9800; color: white; margin-right: 5px;">
-                                    🔧 Recover Upload
+                                        class="btn" style="background: #ff9800; color: white; margin-right: 5px;" 
+                                        title="Mark batch as ready to process with currently uploaded photos">
+                                    ✅ Mark as Ready
                                 </button>
+                                {% elif batch.status == 'awaiting_review' %}
+                                <a href="{{ url_for('photo_review_page', batch_id=batch.id) }}" 
+                                   class="btn" style="background: #ff9800; color: white; text-decoration: none; margin-right: 5px;">
+                                    📋 Review & Approve
+                                </a>
                                 {% elif batch.status in ['uploaded', 'error'] %}
                                 <a href="{{ url_for('process_photo_batch_page', batch_id=batch.id) }}" 
                                    class="btn btn-primary" style="background: #4CAF50; text-decoration: none; margin-right: 5px;">
@@ -601,7 +607,7 @@
 
         // Recover stuck batch
         async function recoverBatch(batchId) {
-            if (!confirm('Recover this batch with currently uploaded photos?\n\nThis will mark the batch as ready to process with the photos that were successfully uploaded.')) {
+            if (!confirm('Mark this batch as ready to process?\n\nThis will finalize the batch with the photos that were successfully uploaded, without adding more files.')) {
                 return;
             }
 
@@ -616,13 +622,13 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    alert(`✓ Batch recovered!\n${data.photos} photos (${data.size_mb.toFixed(1)}MB) ready to process.`);
+                    alert(`✓ Batch marked as ready!\n${data.photos} photos (${data.size_mb.toFixed(1)}MB) ready to process.`);
                     location.reload();
                 } else {
-                    alert(`Failed to recover batch: ${data.error}`);
+                    alert(`Failed to mark batch as ready: ${data.error}`);
                 }
             } catch (error) {
-                console.error('Error recovering batch:', error);
+                console.error('Error marking batch as ready:', error);
                 alert(`Error: ${error.message}`);
             }
         }
@@ -661,6 +667,162 @@
             if (event.target === qrModal) {
                 closeQRModal();
             }
+        });
+
+        // Live batch status polling
+        let batchPollingInterval = null;
+        
+        function startBatchPolling() {
+            // Poll every 2 seconds
+            batchPollingInterval = setInterval(updateBatchStatuses, 2000);
+            
+            // Also update immediately
+            updateBatchStatuses();
+        }
+        
+        function stopBatchPolling() {
+            if (batchPollingInterval) {
+                clearInterval(batchPollingInterval);
+                batchPollingInterval = null;
+            }
+        }
+        
+        async function updateBatchStatuses() {
+            try {
+                const response = await fetch('/admin/batches/status');
+                const data = await response.json();
+                
+                if (data.success && data.batches) {
+                    data.batches.forEach(batch => {
+                        updateBatchRow(batch);
+                    });
+                }
+            } catch (error) {
+                console.error('Error polling batch statuses:', error);
+            }
+        }
+        
+        function updateBatchRow(batch) {
+            // Find the row for this batch
+            const rows = document.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+                const firstCell = row.cells[0];
+                if (firstCell && firstCell.textContent.trim() === String(batch.id)) {
+                    // Update status column (column 2)
+                    const statusCell = row.cells[2];
+                    if (statusCell) {
+                        const statusMap = {
+                            'uploading': { emoji: '⬆️', text: 'Uploading', color: '#2196F3' },
+                            'uploaded': { emoji: '✓', text: 'Uploaded', color: '#4CAF50' },
+                            'processing': { emoji: '⚙️', text: 'Processing', color: '#667eea' },
+                            'awaiting_review': { emoji: '📋', text: 'Awaiting Review', color: '#ff9800' },
+                            'completed': { emoji: '✅', text: 'Completed', color: '#10b981' },
+                            'error': { emoji: '❌', text: 'Error', color: '#dc3545' },
+                            'ready': { emoji: '📦', text: 'Ready', color: '#4CAF50' }
+                        };
+                        
+                        const status = statusMap[batch.status] || { emoji: '•', text: batch.status, color: '#666' };
+                        
+                        let statusHTML = `<span style="color: ${status.color}; font-weight: 500;">${status.emoji} ${status.text}</span>`;
+                        
+                        // Add current action if available and processing
+                        if (batch.current_action && (batch.status === 'processing' || batch.status === 'uploading')) {
+                            statusHTML += `<br><small style="color: #666;">${batch.current_action}</small>`;
+                        }
+                        
+                        statusCell.innerHTML = statusHTML;
+                    }
+                    
+                    // Update actions column (column 3) based on status
+                    const actionsCell = row.cells[3];
+                    if (actionsCell && batch.status) {
+                        updateBatchActions(actionsCell, batch);
+                    }
+                }
+            });
+        }
+        
+        function updateBatchActions(actionsCell, batch) {
+            const actionsDiv = actionsCell.querySelector('.actions');
+            if (!actionsDiv) return;
+            
+            // Get the delete button to preserve it
+            const deleteForm = actionsDiv.querySelector('form');
+            
+            // Build new action buttons based on status
+            let actionButtons = '';
+            
+            if (batch.status === 'uploading') {
+                actionButtons = `
+                    <a href="/admin/photos/upload?resume_batch_id=${batch.id}" 
+                       class="btn" style="background: #2196F3; color: white; text-decoration: none; margin-right: 5px;">
+                        ▶️ Resume Upload
+                    </a>
+                    <button onclick="recoverBatch(${batch.id})" 
+                            class="btn" style="background: #ff9800; color: white; margin-right: 5px;" 
+                            title="Mark batch as ready to process with currently uploaded photos">
+                        ✅ Mark as Ready
+                    </button>
+                `;
+            } else if (batch.status === 'awaiting_review') {
+                actionButtons = `
+                    <a href="/admin/photos/review/${batch.id}" 
+                       class="btn" style="background: #ff9800; color: white; text-decoration: none; margin-right: 5px;">
+                        📋 Review & Approve
+                    </a>
+                `;
+            } else if (batch.status === 'uploaded' || batch.status === 'error' || batch.status === 'ready') {
+                actionButtons = `
+                    <a href="/admin/photos/process/${batch.id}" 
+                       class="btn btn-primary" style="background: #4CAF50; text-decoration: none; margin-right: 5px;">
+                        🚀 Process
+                    </a>
+                `;
+            } else if (batch.status === 'processing') {
+                actionButtons = `
+                    <a href="/admin/photos/process/${batch.id}" 
+                       class="btn btn-info" style="text-decoration: none; margin-right: 5px;">
+                        👁️ View Progress
+                    </a>
+                `;
+            } else if (batch.status === 'completed') {
+                actionButtons = `
+                    <a href="/admin/photos/batch-results/${batch.id}" 
+                       class="btn btn-info" style="text-decoration: none; margin-right: 5px;">
+                        📊 View Results & Send Emails
+                    </a>
+                `;
+            }
+            
+            // Update the actions div with new buttons + preserved delete form
+            actionsDiv.innerHTML = actionButtons + (deleteForm ? deleteForm.outerHTML : '');
+        }
+        
+        // Check if there are any batches in processing/uploading state
+        function shouldPoll() {
+            const rows = document.querySelectorAll('tbody tr');
+            for (const row of rows) {
+                const statusCell = row.cells[2];
+                if (statusCell) {
+                    const statusText = statusCell.textContent.toLowerCase();
+                    if (statusText.includes('processing') || statusText.includes('uploading')) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        
+        // Start polling on page load if needed
+        document.addEventListener('DOMContentLoaded', function() {
+            if (shouldPoll()) {
+                startBatchPolling();
+            }
+        });
+        
+        // Stop polling when leaving the page
+        window.addEventListener('beforeunload', function() {
+            stopBatchPolling();
         });
     </script>
 

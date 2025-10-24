@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Manual QR Review - Batch #{{ batch.id }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v={{ range(1, 10000) | random }}">
+    <style>
+        .review-container {
+            max-width: 1600px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+
+        .review-header {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-card.success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+
+        .stat-card.warning {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .stat-card .label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .warning-box {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px 20px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .warning-box strong {
+            color: #856404;
+        }
+
+        .photo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .photo-item {
+            position: relative;
+            border: 3px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #f9f9f9;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .photo-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .photo-item.has-qr {
+            border-color: #4CAF50;
+            background: #e8f5e9;
+        }
+
+        .photo-item.unmatched {
+            border-color: #ff9800;
+            background: #fff3e0;
+        }
+
+        .photo-item.rescanning {
+            border-color: #2196F3;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { border-color: #2196F3; }
+            50% { border-color: #64B5F6; }
+        }
+
+        .photo-thumbnail {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .photo-info {
+            padding: 10px;
+            font-size: 12px;
+        }
+
+        .photo-filename {
+            font-weight: 500;
+            margin-bottom: 5px;
+            word-break: break-all;
+        }
+
+        .qr-badge {
+            background: #4CAF50;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            display: inline-block;
+            margin-top: 5px;
+        }
+
+        .person-name {
+            font-weight: bold;
+            color: #2e7d32;
+            margin-top: 5px;
+        }
+
+        .rescan-btn {
+            width: 100%;
+            padding: 8px;
+            background: #ff9800;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+
+        .rescan-btn:hover {
+            background: #f57c00;
+        }
+
+        .rescan-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .action-buttons {
+            position: sticky;
+            bottom: 0;
+            background: white;
+            padding: 20px;
+            border-top: 2px solid #ddd;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+        }
+
+        .btn-large {
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .btn-approve {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn-approve:hover {
+            background: #45a049;
+            transform: scale(1.05);
+        }
+
+        .btn-cancel {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-cancel:hover {
+            background: #c82333;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #fff;
+            border-top: 2px solid transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .photo-index {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="review-container">
+        <div class="review-header">
+            <h1>📋 Manual QR Review - Batch #{{ batch.id }}</h1>
+            <p>{{ batch.batch_name }}</p>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="label">Total Photos</div>
+                    <div class="value">{{ photos|length }}</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="label">QR Codes Found</div>
+                    <div class="value" id="qrCount">{{ qr_photos|length }}</div>
+                </div>
+                <div class="stat-card warning">
+                    <div class="label">Registered People</div>
+                    <div class="value">{{ registrations_count }}</div>
+                </div>
+                <div class="stat-card {% if qr_photos|length == registrations_count %}success{% else %}warning{% endif %}">
+                    <div class="label">Match Status</div>
+                    <div class="value" id="matchStatus">
+                        {% if qr_photos|length == registrations_count %}✓{% else %}⚠️{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            {% if qr_photos|length != registrations_count %}
+            <div class="warning-box">
+                <strong>⚠️ Warning:</strong> 
+                Found {{ qr_photos|length }} QR codes but {{ registrations_count }} people are registered.
+                {% if qr_photos|length < registrations_count %}
+                    {{ registrations_count - qr_photos|length }} person(s) might be missing from the photos.
+                {% else %}
+                    There might be duplicate QR codes or unregistered people.
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% if missing_registrations %}
+            <div class="warning-box" style="background: #fff3cd; border-color: #ffc107;">
+                <strong>🔍 Missing People ({{ missing_registrations|length }}):</strong>
+                <div style="margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px;">
+                    {% for reg in missing_registrations %}
+                    <div style="background: white; padding: 8px 12px; border-radius: 4px; border: 1px solid #ffc107; font-size: 14px;">
+                        <strong>{{ reg.first_name }} {{ reg.last_name }}</strong>
+                        <br><small style="color: #666;">{{ reg.email }}</small>
+                    </div>
+                    {% endfor %}
+                </div>
+                <p style="margin-top: 10px; margin-bottom: 0; font-size: 13px; color: #856404;">
+                    💡 <strong>Tip:</strong> Look for photos without green borders before or after each missing person's photos. Those QR codes likely need rescanning.
+                </p>
+            </div>
+            {% endif %}
+
+            <p style="margin-top: 15px; color: #666;">
+                <strong>Instructions:</strong> Scroll through all photos below. QR code photos are marked with a <span style="color: #4CAF50;">green border</span> and show the person's name.
+                If you see a different person without a QR photo before them, click the "🔍 Rescan" button to detect the QR code with enhanced processing.
+            </p>
+        </div>
+
+        <div class="photo-grid" id="photoGrid">
+            {% for photo in photos %}
+            <div class="photo-item {% if photo.is_qr_code %}has-qr{% elif not photo.registration_id %}unmatched{% endif %}" 
+                 id="photo-{{ photo.id }}" 
+                 data-photo-id="{{ photo.id }}">
+                <span class="photo-index">#{{ loop.index }}</span>
+                <img src="/uploads/batches/{{ batch.id }}/{{ photo.filename }}" 
+                     alt="{{ photo.filename }}" 
+                     class="photo-thumbnail"
+                     loading="lazy">
+                <div class="photo-info">
+                    <div class="photo-filename">{{ photo.filename }}</div>
+                    {% if photo.is_qr_code %}
+                        <span class="qr-badge">✓ QR CODE</span>
+                        {% if photo.registration %}
+                            <div class="person-name">{{ photo.registration.first_name }} {{ photo.registration.last_name }}</div>
+                        {% else %}
+                            <div style="color: #f57c00; font-size: 11px;">QR found but not matched</div>
+                        {% endif %}
+                    {% elif photo.registration %}
+                        <div class="person-name">→ {{ photo.registration.first_name }} {{ photo.registration.last_name }}</div>
+                    {% else %}
+                        <button class="rescan-btn" onclick="rescanPhoto({{ photo.id }}, '{{ photo.filename }}')">
+                            🔍 Rescan for QR
+                        </button>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="action-buttons">
+            <button class="btn-large btn-cancel" onclick="window.location.href='/admin'">
+                ← Back to Dashboard
+            </button>
+            <button class="btn-large btn-approve" onclick="approveAndContinue()" id="approveBtn">
+                ✓ Approve & Continue to Drive Upload
+            </button>
+        </div>
+    </div>
+
+    <script>
+        function getCsrfToken() {
+            return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        }
+
+        function removeMissingPerson(registrationId, personName) {
+            // Find all missing person cards
+            const missingCards = document.querySelectorAll('.warning-box [style*="border: 1px solid #ffc107"]');
+            
+            missingCards.forEach(card => {
+                const cardText = card.textContent;
+                // Check if this card matches the person name
+                if (cardText.includes(personName)) {
+                    // Add a strikethrough effect instead of removing
+                    card.style.opacity = '0.4';
+                    card.style.textDecoration = 'line-through';
+                    card.style.borderColor = '#4CAF50';
+                    card.style.background = '#e8f5e9';
+                    
+                    // Update the strong tag to show "FOUND"
+                    const strongTag = card.querySelector('strong');
+                    if (strongTag) {
+                        strongTag.innerHTML = `✓ ${strongTag.textContent}`;
+                    }
+                }
+            });
+        }
+
+        async function rescanPhoto(photoId, filename) {
+            const photoItem = document.getElementById(`photo-${photoId}`);
+            const rescanBtn = photoItem.querySelector('.rescan-btn');
+            
+            if (rescanBtn) {
+                rescanBtn.disabled = true;
+                rescanBtn.innerHTML = '<span class="spinner"></span> Scanning...';
+            }
+            
+            photoItem.classList.add('rescanning');
+
+            try {
+                const response = await fetch(`/admin/photos/rescan/${photoId}`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCsrfToken()
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    if (data.qr_detected) {
+                        // QR code found!
+                        photoItem.classList.remove('rescanning', 'unmatched');
+                        photoItem.classList.add('has-qr');
+                        
+                        const infoDiv = photoItem.querySelector('.photo-info');
+                        if (data.person_name) {
+                            infoDiv.innerHTML = `
+                                <div class="photo-filename">${filename}</div>
+                                <span class="qr-badge">✓ QR CODE</span>
+                                <div class="person-name">${data.person_name}</div>
+                            `;
+                            
+                            // Remove person from missing list if present
+                            removeMissingPerson(data.registration_id, data.person_name);
+                        } else {
+                            infoDiv.innerHTML = `
+                                <div class="photo-filename">${filename}</div>
+                                <span class="qr-badge">✓ QR CODE</span>
+                                <div style="color: #f57c00; font-size: 11px;">QR found but not matched</div>
+                            `;
+                        }
+                        
+                        // Update QR count
+                        const qrCount = document.getElementById('qrCount');
+                        qrCount.textContent = parseInt(qrCount.textContent) + 1;
+                        
+                        alert(`✓ QR Code found!\n${data.person_name || 'Person not matched'}`);
+                    } else {
+                        // No QR code found
+                        photoItem.classList.remove('rescanning');
+                        if (rescanBtn) {
+                            rescanBtn.disabled = false;
+                            rescanBtn.innerHTML = '🔍 Rescan for QR';
+                        }
+                        alert('No QR code detected in this photo.\nTry a different photo or check if the QR code is clearly visible.');
+                    }
+                } else {
+                    throw new Error(data.error || 'Rescan failed');
+                }
+            } catch (error) {
+                console.error('Rescan error:', error);
+                photoItem.classList.remove('rescanning');
+                if (rescanBtn) {
+                    rescanBtn.disabled = false;
+                    rescanBtn.innerHTML = '🔍 Rescan for QR';
+                }
+                alert('Error rescanning photo: ' + error.message);
+            }
+        }
+
+        async function approveAndContinue() {
+            const approveBtn = document.getElementById('approveBtn');
+            const qrCount = parseInt(document.getElementById('qrCount').textContent);
+            const registeredCount = {{ registrations_count }};
+            
+            // Check if counts match
+            if (qrCount !== registeredCount) {
+                const difference = Math.abs(qrCount - registeredCount);
+                const message = qrCount < registeredCount 
+                    ? `Warning: ${difference} registered person(s) might be missing from the photos.\n\nDo you want to continue anyway?`
+                    : `Warning: Found ${difference} more QR code(s) than registered people.\n\nDo you want to continue anyway?`;
+                
+                if (!confirm(message)) {
+                    return;
+                }
+            }
+            
+            if (!confirm('Start Drive upload process?\n\nThis will create folders and upload photos to Google Drive.')) {
+                return;
+            }
+            
+            approveBtn.disabled = true;
+            approveBtn.innerHTML = '<span class="spinner"></span> Starting upload...';
+            
+            try {
+                const response = await fetch('/admin/photos/approve-review/{{ batch.id }}', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCsrfToken()
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Redirect to processing page to watch upload progress
+                    window.location.href = '/admin/photos/process/{{ batch.id }}';
+                } else {
+                    throw new Error(data.error || 'Failed to start upload');
+                }
+            } catch (error) {
+                console.error('Approval error:', error);
+                approveBtn.disabled = false;
+                approveBtn.innerHTML = '✓ Approve & Continue to Drive Upload';
+                alert('Error starting upload: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

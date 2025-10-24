@@ -403,6 +403,8 @@
             
             if (data.status === 'completed') {
                 phaseIndicator.innerHTML = '<strong style="color: #10b981;">✓ Processing Complete</strong>';
+            } else if (data.status === 'awaiting_review') {
+                phaseIndicator.innerHTML = '<strong style="color: #ff9800;">📋 Phase 1 Complete - Awaiting Manual Review</strong>';
             } else if (currentAction.includes('Phase 2') || currentAction.includes('Drive')) {
                 phaseIndicator.innerHTML = '<strong style="color: #667eea;">📤 Phase 2: Uploading to Google Drive (80-100%)</strong>';
             } else if (data.status === 'processing') {
@@ -481,8 +483,22 @@
                         data.status === 'completed' ? 'completed' : data.status === 'error' ? 'error' : 'processing'
                     );
 
-                    // Check if processing is complete
-                    if (data.status === 'completed') {
+                    // Check if Phase 1 complete - redirect to manual review
+                    if (data.status === 'awaiting_review') {
+                        isProcessing = false;
+                        clearInterval(processingInterval);
+                        showAlert(
+                            `Phase 1 complete! Found ${data.people_found} QR codes. Redirecting to manual review...`,
+                            'success'
+                        );
+                        addLog(`Phase 1 complete - redirecting to manual review page`, 'info');
+                        
+                        // Redirect to manual review page after 2 seconds
+                        setTimeout(() => {
+                            window.location.href = `/admin/photos/review/${batchId}`;
+                        }, 2000);
+                        
+                    } else if (data.status === 'completed') {
                         isProcessing = false;
                         clearInterval(processingInterval);
                         showAlert(
@@ -539,6 +555,14 @@
                         document.getElementById('startBtn').disabled = true;
                         document.getElementById('startBtn').textContent = '⏳ Processing...';
                         pollStatus();
+                    } else if (data.status === 'awaiting_review') {
+                        updateStatus('Awaiting Review', 'Phase 1 complete - awaiting manual review', '📋', 'processing');
+                        document.getElementById('startBtn').textContent = '📋 Review & Approve';
+                        document.getElementById('startBtn').disabled = false;
+                        document.getElementById('startBtn').onclick = function() {
+                            window.location.href = `/admin/photos/review/${batchId}`;
+                        };
+                        showAlert('Phase 1 complete. Click "Review & Approve" to manually verify QR codes.', 'info');
                     } else if (data.status === 'completed') {
                         updateStatus('Completed', 'Processing completed', '✅', 'completed');
                         document.getElementById('startBtn').textContent = '✅ Already Processed';
