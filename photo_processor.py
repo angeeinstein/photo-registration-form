@@ -378,6 +378,24 @@ class PhotoProcessor:
             }
             
             return metrics
+            
+        except Exception as e:
+            self.batch.error_message = str(e)
+            self._update_batch_status(
+                status="error",
+                current_action=f"Phase 1 failed: {str(e)}"
+            )
+            self._log_action(
+                "phase1_error",
+                f"Fatal error in Phase 1: {str(e)}",
+                level="error"
+            )
+            
+            return {
+                'success': False,
+                'error': str(e),
+                'phase': 1
+            }
     
     def process_phase2_drive_upload(self) -> Dict:
         """
