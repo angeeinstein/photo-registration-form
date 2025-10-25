@@ -585,13 +585,19 @@ class PhotoProcessor:
             end_time = datetime.utcnow()
             processing_time = (end_time - start_time).total_seconds()
             
+            # Count unmatched photos from database
+            unmatched_count = Photo.query.filter_by(
+                batch_id=self.batch_id, 
+                registration_id=None
+            ).count()
+            
             # Update batch status and metrics
             self.batch.people_found = self.people_found
-            self.batch.unmatched_photos = len(self.unmatched_photos)
+            self.batch.unmatched_photos = unmatched_count
             self.batch.processing_completed_at = end_time
             self._update_batch_status(
                 status="completed",
-                current_action=f"Complete: {self.people_found} people, {len(self.unmatched_photos)} unmatched, {sum(1 for r in drive_results if r['success'])}/{len(drive_results)} uploaded to Drive"
+                current_action=f"Complete: {self.people_found} people, {unmatched_count} unmatched, {sum(1 for r in drive_results if r['success'])}/{len(drive_results)} uploaded to Drive"
             )
             
             self._log_action(
@@ -630,6 +636,12 @@ class PhotoProcessor:
     
     def get_progress(self) -> Dict:
         """Get current processing progress"""
+        # Count unmatched photos from database
+        unmatched_count = Photo.query.filter_by(
+            batch_id=self.batch_id, 
+            registration_id=None
+        ).count()
+        
         return {
             'batch_id': self.batch_id,
             'status': self.batch.status,
@@ -638,5 +650,5 @@ class PhotoProcessor:
             'total_photos': self.batch.total_photos,
             'progress_percentage': int((self.batch.processed_photos / self.batch.total_photos * 100)) if self.batch.total_photos > 0 else 0,
             'people_found': self.people_found,
-            'unmatched_photos': len(self.unmatched_photos)
+            'unmatched_photos': unmatched_count
         }

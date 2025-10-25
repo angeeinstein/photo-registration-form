@@ -1173,6 +1173,48 @@ def admin_delete_registration(registration_id):
     
     return redirect(url_for('admin_dashboard'))
 
+@app.route('/admin/find-duplicate-registrations')
+@login_required
+def admin_find_duplicates():
+    """Find duplicate registrations based on email"""
+    from sqlalchemy import func
+    
+    # Find emails that appear more than once
+    duplicates = db.session.query(
+        Registration.email,
+        func.count(Registration.id).label('count')
+    ).group_by(Registration.email).having(func.count(Registration.id) > 1).all()
+    
+    duplicate_groups = []
+    for email, count in duplicates:
+        registrations = Registration.query.filter_by(email=email).order_by(Registration.created_at).all()
+        
+        # Get photo count for each registration
+        reg_with_photos = []
+        for reg in registrations:
+            photo_count = Photo.query.filter_by(registration_id=reg.id).count()
+            reg_with_photos.append({
+                'id': reg.id,
+                'first_name': reg.first_name,
+                'last_name': reg.last_name,
+                'email': reg.email,
+                'created_at': reg.created_at,
+                'photo_count': photo_count,
+                'has_drive_folder': bool(reg.drive_folder_id)
+            })
+        
+        duplicate_groups.append({
+            'email': email,
+            'count': count,
+            'registrations': reg_with_photos
+        })
+    
+    return jsonify({
+        'success': True,
+        'duplicate_count': len(duplicate_groups),
+        'duplicates': duplicate_groups
+    })
+
 @app.route('/admin/delete-all-registrations', methods=['POST'])
 @login_required
 def admin_delete_all_registrations():
