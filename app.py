@@ -774,6 +774,7 @@ def admin_dashboard():
 
 @app.route('/uploads/<path:filename>')
 @login_required
+@limiter.exempt  # Exempt from rate limiting - review page loads many thumbnails
 def serve_uploaded_file(filename):
     """Serve uploaded files from the uploads directory"""
     from flask import send_from_directory

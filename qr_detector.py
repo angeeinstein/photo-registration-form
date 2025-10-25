@@ -227,6 +227,38 @@ def detect_qr_in_image(image_path: str, enhance: bool = True) -> QRDetectionResu
         if result.detected:
             return result
         
+        # Strategy 4: Multiple preprocessing techniques for difficult cases (phone screens, glare)
+        logger.debug("Trying advanced preprocessing for phone screens...")
+        
+        # CLAHE (Contrast Limited Adaptive Histogram Equalization) - great for uneven lighting
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        clahe_enhanced = clahe.apply(gray)
+        result = _try_decode_qr(clahe_enhanced)
+        if result.detected:
+            return result
+        
+        # Bilateral filter to reduce noise while preserving edges
+        bilateral = cv2.bilateralFilter(gray, 9, 75, 75)
+        result = _try_decode_qr(bilateral)
+        if result.detected:
+            return result
+        
+        # Sharpen the image (helps with slightly blurry QR codes)
+        kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+        sharpened = cv2.filter2D(gray, -1, kernel)
+        result = _try_decode_qr(sharpened)
+        if result.detected:
+            return result
+        
+        # Gamma correction for screen glare
+        gamma = 1.5
+        inv_gamma = 1.0 / gamma
+        table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+        gamma_corrected = cv2.LUT(gray, table)
+        result = _try_decode_qr(gamma_corrected)
+        if result.detected:
+            return result
+        
         # No QR code detected after all strategies
         logger.info(f"No QR code detected in image: {image_path}")
         return QRDetectionResult(detected=False, error="No QR code found")
