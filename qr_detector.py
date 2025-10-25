@@ -288,6 +288,35 @@ def detect_qr_in_image(image_path: str, enhance: bool = True) -> QRDetectionResu
             if result.detected:
                 return result
         
+        # Strategy 6: Advanced thresholding techniques (for tilted QR codes, phone screens)
+        logger.debug("Trying advanced thresholding techniques...")
+        
+        # Otsu's thresholding (automatic threshold selection)
+        _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        result = _try_decode_qr(otsu)
+        if result.detected:
+            return result
+        
+        # Try inverse Otsu (sometimes QR is inverted on screen)
+        _, otsu_inv = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        result = _try_decode_qr(otsu_inv)
+        if result.detected:
+            return result
+        
+        # Median blur + Otsu (reduces noise before thresholding)
+        median_blur = cv2.medianBlur(gray, 5)
+        _, otsu_median = cv2.threshold(median_blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        result = _try_decode_qr(otsu_median)
+        if result.detected:
+            return result
+        
+        # Morphological operations to clean up the image
+        kernel_morph = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
+        morph = cv2.morphologyEx(otsu, cv2.MORPH_CLOSE, kernel_morph)
+        result = _try_decode_qr(morph)
+        if result.detected:
+            return result
+        
         # No QR code detected after all strategies
         logger.info(f"No QR code detected in image: {image_path}")
         return QRDetectionResult(detected=False, error="No QR code found")
@@ -300,6 +329,7 @@ def detect_qr_in_image(image_path: str, enhance: bool = True) -> QRDetectionResu
 def _try_decode_qr(image: np.ndarray) -> QRDetectionResult:
     """
     Internal helper to attempt QR code decoding on an image.
+    Uses multiple decoders for best compatibility.
     
     Args:
         image: OpenCV image (numpy array)
@@ -308,40 +338,48 @@ def _try_decode_qr(image: np.ndarray) -> QRDetectionResult:
         QRDetectionResult object
     """
     try:
-        # Detect QR codes
+        # Method 1: Try pyzbar (generally more robust)
         qr_codes = pyzbar.decode(image)
         
-        if not qr_codes:
-            return QRDetectionResult(detected=False)
-        
-        # Process first QR code found (we expect only one per photo)
-        qr_code = qr_codes[0]
-        
-        # Decode data
-        qr_data = qr_code.data.decode('utf-8')
-        logger.debug(f"QR code detected with data: {qr_data}")
-        
-        # Parse data
-        parsed_data = parse_qr_data(qr_data)
-        
-        if parsed_data:
-            logger.info(f"QR code successfully decoded and parsed")
-            return QRDetectionResult(
-                detected=True,
-                qr_data=qr_data,
-                parsed_data=parsed_data
-            )
-        else:
-            logger.warning(f"QR code detected but failed to parse: {qr_data}")
-            return QRDetectionResult(
-                detected=True,
-                qr_data=qr_data,
-                parsed_data=None,
-                error="Failed to parse QR data format"
-            )
+        if qr_codes:
+            # Process first QR code found (we expect only one per photo)
+            qr_code = qr_codes[0]
             
+            # Decode data
+            qr_data = qr_code.data.decode('utf-8')
+            
+            # Parse QR data
+            parsed_data = parse_qr_data(qr_data)
+            
+            if parsed_data:
+                logger.info("QR code successfully decoded and parsed")
+                return QRDetectionResult(
+                    detected=True,
+                    qr_data=qr_data,
+                    parsed_data=parsed_data
+                )
+        
+        # Method 2: Try OpenCV's QRCodeDetector (sometimes better with tilted/distorted codes)
+        qr_detector = cv2.QRCodeDetector()
+        qr_data, points, _ = qr_detector.detectAndDecode(image)
+        
+        if qr_data:
+            logger.info("QR code detected using OpenCV QRCodeDetector")
+            parsed_data = parse_qr_data(qr_data)
+            
+            if parsed_data:
+                logger.info("QR code successfully decoded and parsed with OpenCV detector")
+                return QRDetectionResult(
+                    detected=True,
+                    qr_data=qr_data,
+                    parsed_data=parsed_data
+                )
+        
+        # No QR code detected with any method
+        return QRDetectionResult(detected=False)
+        
     except Exception as e:
-        logger.error(f"Error decoding QR code: {str(e)}")
+        logger.debug(f"Error in _try_decode_qr: {str(e)}")
         return QRDetectionResult(detected=False, error=str(e))
 
 
