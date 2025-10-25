@@ -300,7 +300,7 @@ class PhotoProcessor:
                         
                         # Mark this photo as QR code in database
                         photo.is_qr_code = True
-                        photo.qr_data = qr_result.raw_data
+                        photo.qr_data = qr_result.qr_data  # Use qr_data, not raw_data
                         photo.registration_id = registration.id
                         db_commit_with_retry()
                         

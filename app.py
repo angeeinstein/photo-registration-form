@@ -2545,7 +2545,7 @@ def rescan_photo_qr(photo_id):
                         if group_photo.id == photo.id:
                             # Mark the rescanned photo as QR code
                             group_photo.is_qr_code = True
-                            group_photo.qr_data = qr_result.raw_data
+                            group_photo.qr_data = qr_result.qr_data  # Use qr_data, not raw_data
                     
                     db_commit_with_retry()
                     
