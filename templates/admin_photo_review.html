@@ -251,20 +251,20 @@
                     <div class="label">Registered People</div>
                     <div class="value">{{ registrations_count }}</div>
                 </div>
-                <div class="stat-card {% if qr_photos|length == registrations_count %}success{% else %}warning{% endif %}">
+                <div class="stat-card {% if people_found_count == registrations_count %}success{% else %}warning{% endif %}">
                     <div class="label">Match Status</div>
                     <div class="value" id="matchStatus">
-                        {% if qr_photos|length == registrations_count %}✓{% else %}⚠️{% endif %}
+                        {% if people_found_count == registrations_count %}✓{% else %}⚠️{% endif %}
                     </div>
                 </div>
             </div>
 
-            {% if qr_photos|length != registrations_count %}
+            {% if people_found_count != registrations_count %}
             <div class="warning-box">
                 <strong>⚠️ Warning:</strong> 
                 Found {{ qr_photos|length }} QR codes but {{ registrations_count }} people are registered.
-                {% if qr_photos|length < registrations_count %}
-                    {{ registrations_count - qr_photos|length }} person(s) might be missing from the photos.
+                {% if people_found_count < registrations_count %}
+                    {{ registrations_count - people_found_count }} person(s) might be missing from the photos.
                 {% else %}
                     There might be duplicate QR codes or unregistered people.
                 {% endif %}

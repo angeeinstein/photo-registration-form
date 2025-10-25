@@ -2478,6 +2478,7 @@ def photo_review_page(batch_id):
     
     # Find registrations that have ANY photos assigned (QR or grouped photos)
     found_registration_ids = {p.registration_id for p in photos if p.registration_id}
+    people_found_count = len(found_registration_ids)
     
     # Find missing registrations (people without any photos assigned)
     missing_registrations = [r for r in all_registrations if r.id not in found_registration_ids]
@@ -2486,6 +2487,7 @@ def photo_review_page(batch_id):
                           batch=batch,
                           photos=photos,
                           qr_photos=qr_photos,
+                          people_found_count=people_found_count,
                           registrations_count=registrations_count,
                           missing_registrations=missing_registrations)
 
