@@ -205,6 +205,16 @@
             background: #c82333;
         }
 
+        .btn-warning {
+            background: #ff9800;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #e68900;
+            transform: scale(1.05);
+        }
+
         .spinner {
             display: inline-block;
             width: 16px;
@@ -331,9 +341,15 @@
             <button class="btn-large btn-cancel" onclick="window.location.href='/admin'">
                 ← Back to Dashboard
             </button>
+            {% if batch.status == 'processing' %}
+            <button class="btn-large btn-warning" onclick="resetBatchToReview()" id="resetBtn">
+                ⟲ Reset to Review (Batch stuck in processing)
+            </button>
+            {% else %}
             <button class="btn-large btn-approve" onclick="approveAndContinue()" id="approveBtn">
                 ✓ Approve & Continue to Drive Upload
             </button>
+            {% endif %}
         </div>
     </div>
 
@@ -487,6 +503,40 @@
                 approveBtn.disabled = false;
                 approveBtn.innerHTML = '✓ Approve & Continue to Drive Upload';
                 alert('Error starting upload: ' + error.message);
+            }
+        }
+
+        async function resetBatchToReview() {
+            const resetBtn = document.getElementById('resetBtn');
+            
+            if (!confirm('Reset batch status back to "awaiting_review"?\n\nThis will allow you to approve the batch again.')) {
+                return;
+            }
+            
+            resetBtn.disabled = true;
+            resetBtn.innerHTML = '<span class="spinner"></span> Resetting...';
+            
+            try {
+                const response = await fetch('/admin/photos/batch/{{ batch.id }}/reset-to-review', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCsrfToken()
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('Batch reset successfully! The page will reload.');
+                    window.location.reload();
+                } else {
+                    throw new Error(data.error || 'Failed to reset batch');
+                }
+            } catch (error) {
+                console.error('Reset error:', error);
+                resetBtn.disabled = false;
+                resetBtn.innerHTML = '⟲ Reset to Review (Batch stuck in processing)';
+                alert('Error resetting batch: ' + error.message);
             }
         }
     </script>

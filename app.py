@@ -2466,6 +2466,9 @@ def photo_review_page(batch_id):
     """Manual QR review page - shown after Phase 1 processing"""
     batch = PhotoBatch.query.get_or_404(batch_id)
     
+    # Ensure we're reading the latest data
+    db.session.expire_all()
+    
     # Get all photos in batch, ordered by filename
     photos = Photo.query.filter_by(batch_id=batch_id).order_by(Photo.filename).all()
     
@@ -2609,11 +2612,11 @@ def approve_batch_review(batch_id):
         
         # Start Phase 2 processing in background thread
         from photo_processor import PhotoProcessor
-        processor = PhotoProcessor(app.config, db)
+        processor = PhotoProcessor(batch_id)
         
         def run_phase2():
             with app.app_context():
-                processor.process_phase2_drive_upload(batch_id)
+                processor.process_phase2_drive_upload()
         
         import threading
         thread = threading.Thread(target=run_phase2)
@@ -2630,6 +2633,20 @@ def approve_batch_review(batch_id):
         
     except Exception as e:
         app.logger.error(f"Error approving batch review {batch_id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/admin/photos/batch/<int:batch_id>/reset-to-review', methods=['POST'])
+@login_required
+def reset_batch_to_review(batch_id):
+    """Reset batch status back to awaiting_review (useful after errors)"""
+    try:
+        batch = PhotoBatch.query.get_or_404(batch_id)
+        batch.status = 'awaiting_review'
+        db_commit_with_retry()
+        app.logger.info(f"Reset batch {batch_id} to awaiting_review")
+        return jsonify({'success': True, 'message': 'Batch reset to awaiting review'})
+    except Exception as e:
+        app.logger.error(f"Error resetting batch {batch_id}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/admin/photos/batch-results/<int:batch_id>')
