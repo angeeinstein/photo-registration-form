@@ -180,16 +180,21 @@ def detect_qr_in_image(image_path: str, enhance: bool = True) -> QRDetectionResu
             logger.error(f"Failed to read image: {image_path}")
             return QRDetectionResult(detected=False, error="Failed to read image")
         
-        # OPTIMIZATION: Downscale large images for faster QR detection
-        # QR codes are still detectable at lower resolutions
+        # Keep original image for small QR code detection
+        original_image = image.copy()
         height, width = image.shape[:2]
-        max_dimension = 1200  # Sufficient for QR detection
+        
+        # OPTIMIZATION: Downscale large images for faster QR detection (fast mode only)
+        # In enhance mode, we'll also try full resolution for small QR codes
+        max_dimension = 1200  # Sufficient for most QR detection
+        downscaled = False
         
         if width > max_dimension or height > max_dimension:
             scale = max_dimension / max(width, height)
             new_width = int(width * scale)
             new_height = int(height * scale)
             image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            downscaled = True
             logger.debug(f"Downscaled image from {width}x{height} to {new_width}x{new_height}")
         
         # Strategy 1: Try detecting on downscaled image (FAST)
@@ -258,6 +263,30 @@ def detect_qr_in_image(image_path: str, enhance: bool = True) -> QRDetectionResu
         result = _try_decode_qr(gamma_corrected)
         if result.detected:
             return result
+        
+        # Strategy 5: Try full resolution if image was downscaled (for SMALL QR codes)
+        if downscaled:
+            logger.debug("Trying full resolution for small QR codes...")
+            
+            # Convert original image to grayscale at full resolution
+            gray_full = cv2.cvtColor(original_image, cv2.COLOR_BGR2GRAY)
+            
+            # Try original full resolution
+            result = _try_decode_qr(gray_full)
+            if result.detected:
+                return result
+            
+            # Try CLAHE on full resolution (best for small QR codes)
+            clahe_full = clahe.apply(gray_full)
+            result = _try_decode_qr(clahe_full)
+            if result.detected:
+                return result
+            
+            # Try sharpening on full resolution
+            sharpened_full = cv2.filter2D(gray_full, -1, kernel)
+            result = _try_decode_qr(sharpened_full)
+            if result.detected:
+                return result
         
         # No QR code detected after all strategies
         logger.info(f"No QR code detected in image: {image_path}")
