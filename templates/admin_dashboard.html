@@ -222,6 +222,11 @@
                                    class="btn btn-info" style="text-decoration: none; margin-right: 5px;">
                                     👁️ View Progress
                                 </a>
+                                <button onclick="markBatchCompleted({{ batch.id }})" 
+                                   class="btn btn-success" style="background: #28a745; margin-right: 5px;"
+                                   title="Mark as completed if processing is finished but status didn't update">
+                                    ✓ Mark Completed
+                                </button>
                                 {% elif batch.status == 'completed' %}
                                 <a href="{{ url_for('batch_results_page', batch_id=batch.id) }}" 
                                    class="btn btn-info" style="text-decoration: none; margin-right: 5px;">
@@ -824,6 +829,34 @@
         window.addEventListener('beforeunload', function() {
             stopBatchPolling();
         });
+
+        // Mark batch as completed
+        async function markBatchCompleted(batchId) {
+            if (!confirm('Mark this batch as completed?\n\nUse this if the upload finished successfully but the status didn\'t update automatically.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/admin/photos/batch/${batchId}/mark-completed`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCsrfToken()
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert(`✓ Batch marked as completed!\n\n${data.people_found} people found\n${data.unmatched} unmatched photos`);
+                    location.reload();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error marking batch as completed:', error);
+                alert('Error marking batch as completed: ' + error.message);
+            }
+        }
     </script>
 
     <!-- QR Code Modal -->

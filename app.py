@@ -2698,6 +2698,43 @@ def reset_batch_to_review(batch_id):
         app.logger.error(f"Error resetting batch {batch_id}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/admin/photos/batch/<int:batch_id>/mark-completed', methods=['POST'])
+@login_required
+def mark_batch_completed(batch_id):
+    """Mark batch as completed (useful when Phase 2 finished but status didn't update)"""
+    try:
+        batch = PhotoBatch.query.get_or_404(batch_id)
+        
+        # Count unique people and unmatched photos
+        found_registration_ids = db.session.query(Photo.registration_id).filter(
+            Photo.batch_id == batch_id,
+            Photo.registration_id.isnot(None)
+        ).distinct().count()
+        
+        unmatched_count = Photo.query.filter_by(
+            batch_id=batch_id, 
+            registration_id=None
+        ).count()
+        
+        # Update batch
+        batch.status = 'completed'
+        batch.people_found = found_registration_ids
+        batch.unmatched_photos = unmatched_count
+        batch.current_action = f"Complete: {found_registration_ids} people, {unmatched_count} unmatched"
+        
+        db_commit_with_retry()
+        app.logger.info(f"Marked batch {batch_id} as completed: {found_registration_ids} people, {unmatched_count} unmatched")
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Batch marked as completed: {found_registration_ids} people found',
+            'people_found': found_registration_ids,
+            'unmatched': unmatched_count
+        })
+    except Exception as e:
+        app.logger.error(f"Error marking batch {batch_id} as completed: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/admin/photos/batch-results/<int:batch_id>')
 @login_required
 def batch_results_page(batch_id):

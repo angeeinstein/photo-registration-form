@@ -415,57 +415,14 @@
 
                 if (data.success) {
                     if (data.qr_detected) {
-                        // QR code found!
-                        photoItem.classList.remove('rescanning', 'unmatched');
-                        photoItem.classList.add('has-qr');
-                        
-                        const infoDiv = photoItem.querySelector('.photo-info');
-                        if (data.person_name) {
-                            infoDiv.innerHTML = `
-                                <div class="photo-filename">${filename}</div>
-                                <span class="qr-badge">✓ QR CODE</span>
-                                <div class="person-name">${data.person_name}</div>
-                            `;
-                            
-                            // Check if this is a NEW person (not found before)
-                            const isNewPerson = !foundRegistrationIds.has(data.registration_id);
-                            if (isNewPerson) {
-                                foundRegistrationIds.add(data.registration_id);
-                                
-                                // Update people found count
-                                const peopleFoundCount = document.getElementById('peopleFoundCount');
-                                peopleFoundCount.textContent = parseInt(peopleFoundCount.textContent) + 1;
-                                
-                                // Update match status
-                                const registeredCount = {{ registrations_count }};
-                                const currentPeopleFound = parseInt(peopleFoundCount.textContent);
-                                const matchStatus = document.getElementById('matchStatus');
-                                if (currentPeopleFound === registeredCount) {
-                                    matchStatus.textContent = '✓';
-                                    matchStatus.closest('.stat-card').classList.remove('warning');
-                                    matchStatus.closest('.stat-card').classList.add('success');
-                                }
-                            }
-                            
-                            // Remove person from missing list if present
-                            removeMissingPerson(data.registration_id, data.person_name);
-                        } else {
-                            infoDiv.innerHTML = `
-                                <div class="photo-filename">${filename}</div>
-                                <span class="qr-badge">✓ QR CODE</span>
-                                <div style="color: #f57c00; font-size: 11px;">QR found but not matched</div>
-                            `;
-                        }
-                        
-                        // Update QR count
-                        const qrCount = document.getElementById('qrCount');
-                        qrCount.textContent = parseInt(qrCount.textContent) + 1;
-                        
-                        // Show success message with photo count
+                        // QR code found - show success and reload page to update all photos in group
                         const photoCountMsg = data.photos_updated > 1 
                             ? `\n${data.photos_updated} photos updated in database` 
                             : '';
-                        alert(`✓ QR Code found!\n${data.person_name || 'Person not matched'}${photoCountMsg}`);
+                        alert(`✓ QR Code found!\n${data.person_name || 'Person not matched'}${photoCountMsg}\n\nPage will reload to show all updated photos.`);
+                        
+                        // Reload page to show all updated photos
+                        window.location.reload();
                     } else {
                         // No QR code found
                         photoItem.classList.remove('rescanning');

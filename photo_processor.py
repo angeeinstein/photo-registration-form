@@ -591,18 +591,24 @@ class PhotoProcessor:
                 registration_id=None
             ).count()
             
+            # Count unique people found
+            found_registration_ids = db.session.query(Photo.registration_id).filter(
+                Photo.batch_id == self.batch_id,
+                Photo.registration_id.isnot(None)
+            ).distinct().count()
+            
             # Update batch status and metrics
-            self.batch.people_found = self.people_found
+            self.batch.people_found = found_registration_ids
             self.batch.unmatched_photos = unmatched_count
             self.batch.processing_completed_at = end_time
             self._update_batch_status(
                 status="completed",
-                current_action=f"Complete: {self.people_found} people, {unmatched_count} unmatched, {sum(1 for r in drive_results if r['success'])}/{len(drive_results)} uploaded to Drive"
+                current_action=f"Complete: {found_registration_ids} people, {unmatched_count} unmatched, {sum(1 for r in drive_results if r['success'])}/{len(drive_results)} uploaded to Drive"
             )
             
             self._log_action(
                 "batch_processing_completed",
-                f"✓ Batch completed in {processing_time:.1f}s - {self.people_found} people, {sum(1 for r in drive_results if r['success'])} uploaded to Drive"
+                f"✓ Batch completed in {processing_time:.1f}s - {found_registration_ids} people, {sum(1 for r in drive_results if r['success'])} uploaded to Drive"
             )
             
             metrics = {
