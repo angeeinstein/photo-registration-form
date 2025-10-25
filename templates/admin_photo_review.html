@@ -254,7 +254,11 @@
                     <div class="value">{{ photos|length }}</div>
                 </div>
                 <div class="stat-card success">
-                    <div class="label">QR Codes Found</div>
+                    <div class="label">People Found</div>
+                    <div class="value" id="peopleFoundCount">{{ people_found_count }}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">QR Codes</div>
                     <div class="value" id="qrCount">{{ qr_photos|length }}</div>
                 </div>
                 <div class="stat-card warning">
@@ -272,11 +276,11 @@
             {% if people_found_count != registrations_count %}
             <div class="warning-box">
                 <strong>⚠️ Warning:</strong> 
-                Found {{ qr_photos|length }} QR codes but {{ registrations_count }} people are registered.
+                Found {{ people_found_count }} people in photos but {{ registrations_count }} people are registered.
                 {% if people_found_count < registrations_count %}
                     {{ registrations_count - people_found_count }} person(s) might be missing from the photos.
                 {% else %}
-                    There might be duplicate QR codes or unregistered people.
+                    There might be {{ people_found_count - registrations_count }} unregistered person(s) in the photos.
                 {% endif %}
             </div>
             {% endif %}
@@ -354,6 +358,13 @@
     </div>
 
     <script>
+        // Track registration IDs that have been found
+        const foundRegistrationIds = new Set([
+            {% for photo in photos if photo.registration_id %}
+                {{ photo.registration_id }},
+            {% endfor %}
+        ]);
+
         function getCsrfToken() {
             return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         }
@@ -416,6 +427,26 @@
                                 <div class="person-name">${data.person_name}</div>
                             `;
                             
+                            // Check if this is a NEW person (not found before)
+                            const isNewPerson = !foundRegistrationIds.has(data.registration_id);
+                            if (isNewPerson) {
+                                foundRegistrationIds.add(data.registration_id);
+                                
+                                // Update people found count
+                                const peopleFoundCount = document.getElementById('peopleFoundCount');
+                                peopleFoundCount.textContent = parseInt(peopleFoundCount.textContent) + 1;
+                                
+                                // Update match status
+                                const registeredCount = {{ registrations_count }};
+                                const currentPeopleFound = parseInt(peopleFoundCount.textContent);
+                                const matchStatus = document.getElementById('matchStatus');
+                                if (currentPeopleFound === registeredCount) {
+                                    matchStatus.textContent = '✓';
+                                    matchStatus.closest('.stat-card').classList.remove('warning');
+                                    matchStatus.closest('.stat-card').classList.add('success');
+                                }
+                            }
+                            
                             // Remove person from missing list if present
                             removeMissingPerson(data.registration_id, data.person_name);
                         } else {
@@ -460,15 +491,15 @@
 
         async function approveAndContinue() {
             const approveBtn = document.getElementById('approveBtn');
-            const qrCount = parseInt(document.getElementById('qrCount').textContent);
+            const peopleFoundCount = parseInt(document.getElementById('peopleFoundCount').textContent);
             const registeredCount = {{ registrations_count }};
             
             // Check if counts match
-            if (qrCount !== registeredCount) {
-                const difference = Math.abs(qrCount - registeredCount);
-                const message = qrCount < registeredCount 
+            if (peopleFoundCount !== registeredCount) {
+                const difference = Math.abs(peopleFoundCount - registeredCount);
+                const message = peopleFoundCount < registeredCount 
                     ? `Warning: ${difference} registered person(s) might be missing from the photos.\n\nDo you want to continue anyway?`
-                    : `Warning: Found ${difference} more QR code(s) than registered people.\n\nDo you want to continue anyway?`;
+                    : `Warning: Found ${difference} more person(s) in photos than registered people.\n\nDo you want to continue anyway?`;
                 
                 if (!confirm(message)) {
                     return;

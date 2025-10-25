@@ -2488,10 +2488,17 @@ def photo_review_page(batch_id):
     
     # Debug logging
     app.logger.info(f"Review page for batch {batch_id}: {len(photos)} photos, {len(qr_photos)} QR codes, {people_found_count} people found, {len(missing_registrations)} missing")
-    app.logger.info(f"Found registration IDs: {found_registration_ids}")
+    app.logger.info(f"Found registration IDs: {sorted(found_registration_ids)}")
     if missing_registrations:
-        missing_names = [f"{r.first_name} {r.last_name} (ID:{r.id})" for r in missing_registrations[:5]]
-        app.logger.info(f"Missing people: {missing_names}")
+        missing_names = [f"{r.first_name} {r.last_name} (ID:{r.id})" for r in missing_registrations]
+        app.logger.info(f"Missing people ({len(missing_registrations)}): {missing_names}")
+        
+        # Additional debugging: check if any photos have these registration IDs
+        for reg in missing_registrations[:3]:  # Check first 3
+            matching_photos = [p for p in photos if p.registration_id == reg.id]
+            if matching_photos:
+                app.logger.warning(f"INCONSISTENCY: Person {reg.first_name} {reg.last_name} (ID:{reg.id}) is in missing list but has {len(matching_photos)} photos!")
+                app.logger.warning(f"  Photo IDs: {[p.id for p in matching_photos]}")
     
     return render_template('admin_photo_review.html',
                           batch=batch,
@@ -2628,7 +2635,7 @@ def approve_batch_review(batch_id):
         return jsonify({
             'success': True,
             'message': 'Phase 2 processing started',
-            'redirect': url_for('admin_photo_processing', batch_id=batch_id)
+            'redirect': url_for('process_photo_batch_page', batch_id=batch_id)
         })
         
     except Exception as e:
