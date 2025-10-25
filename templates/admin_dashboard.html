@@ -275,6 +275,11 @@
     </div>
 
     <script>
+        // CSRF Token helper
+        function getCsrfToken() {
+            return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        }
+
         // Live updates for admin dashboard
         let lastUpdateTime = new Date();
         let isUpdating = false;
