@@ -2476,10 +2476,10 @@ def photo_review_page(batch_id):
     all_registrations = Registration.query.order_by(Registration.last_name, Registration.first_name).all()
     registrations_count = len(all_registrations)
     
-    # Find registrations that have QR codes detected
-    found_registration_ids = {p.registration_id for p in qr_photos if p.registration_id}
+    # Find registrations that have ANY photos assigned (QR or grouped photos)
+    found_registration_ids = {p.registration_id for p in photos if p.registration_id}
     
-    # Find missing registrations (people without QR codes)
+    # Find missing registrations (people without any photos assigned)
     missing_registrations = [r for r in all_registrations if r.id not in found_registration_ids]
     
     return render_template('admin_photo_review.html',
