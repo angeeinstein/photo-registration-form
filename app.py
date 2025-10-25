@@ -2476,12 +2476,19 @@ def photo_review_page(batch_id):
     all_registrations = Registration.query.order_by(Registration.last_name, Registration.first_name).all()
     registrations_count = len(all_registrations)
     
-    # Find registrations that have ANY photos assigned (QR or grouped photos)
-    found_registration_ids = {p.registration_id for p in photos if p.registration_id}
+    # Find registrations that have ANY photos assigned IN THIS BATCH
+    found_registration_ids = {p.registration_id for p in photos if p.registration_id is not None}
     people_found_count = len(found_registration_ids)
     
-    # Find missing registrations (people without any photos assigned)
+    # Find missing registrations (people without any photos assigned in this batch)
     missing_registrations = [r for r in all_registrations if r.id not in found_registration_ids]
+    
+    # Debug logging
+    app.logger.info(f"Review page for batch {batch_id}: {len(photos)} photos, {len(qr_photos)} QR codes, {people_found_count} people found, {len(missing_registrations)} missing")
+    app.logger.info(f"Found registration IDs: {found_registration_ids}")
+    if missing_registrations:
+        missing_names = [f"{r.first_name} {r.last_name} (ID:{r.id})" for r in missing_registrations[:5]]
+        app.logger.info(f"Missing people: {missing_names}")
     
     return render_template('admin_photo_review.html',
                           batch=batch,
